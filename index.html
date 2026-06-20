@@ -6,6 +6,13 @@
 <title>8인 공유 캘린더</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
+  html{
+    /* 모바일 브라우저가 가로(landscape) 모드에서 텍스트를 자동으로
+       확대하는 기능을 막아, 화면 방향과 무관하게 폰트 크기를 고정합니다. */
+    -webkit-text-size-adjust:100%;
+    -moz-text-size-adjust:100%;
+    text-size-adjust:100%;
+  }
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
     background:#f5f4f0;color:#2c2c2a;padding:20px;
