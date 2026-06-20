@@ -67,10 +67,14 @@
   .sync-dot.syncing{background:#fac775}
   .sync-dot.err{background:#e24b4a}
 
-  /* 요약 */
-  .summary-row{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap}
-  .scard{background:#fff;border:1px solid #e5e3da;border-radius:10px;padding:10px 16px;font-size:12px;color:#6b6a64;display:flex;flex-direction:column;gap:2px;min-width:72px}
-  .scard span{font-size:19px;font-weight:700;color:#2c2c2a}
+  /* 다가오는 공대일 */
+  .upcoming-events{display:flex;flex-direction:column;gap:6px;margin-bottom:1rem}
+  .upcoming-title{font-size:12px;color:#6b6a64;font-weight:600;margin-bottom:2px}
+  .upcoming-list{display:flex;gap:8px;flex-wrap:wrap}
+  .upcoming-chip{background:#eaf3de;border:1px solid #c0dd97;border-radius:10px;padding:8px 14px;font-size:12px;color:#27500a;display:flex;flex-direction:column;gap:2px;min-width:96px}
+  .upcoming-chip .ud-date{font-size:14px;font-weight:700}
+  .upcoming-chip .ud-dday{font-size:11px;color:#3b6d11}
+  .upcoming-empty{font-size:12px;color:#9a988f;padding:10px 0}
 
   /* 캘린더 */
   .cal-table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e3da}
@@ -208,7 +212,7 @@
       </div>
     </div>
     <div class="sync-status" id="sync-status"><div class="sync-dot" id="sync-dot"></div><span id="sync-text">시트 미연결 — 이 브라우저에만 저장됩니다</span></div>
-    <div class="summary-row" id="summary-row"></div>
+    <div class="upcoming-events" id="upcoming-events"></div>
     <div class="multi-select-row" id="multi-select-row" style="display:none">
       <button class="multi-select-btn" id="multi-select-btn">☑ 여러 날짜 일괄 선택</button>
       <button class="multi-apply-btn" id="multi-apply-btn" style="display:none">✓ 0개 선택됨 · 적용하기</button>
@@ -866,27 +870,61 @@ document.getElementById('logout-btn').onclick=()=>{
 document.getElementById('prev').onclick=()=>{st.month--;if(st.month<0){st.month=11;st.year--;}if(apiUrl)sheetGet();else render()};
 document.getElementById('next').onclick=()=>{st.month++;if(st.month>11){st.month=0;st.year++;}if(apiUrl)sheetGet();else render()};
 
-function renderSummary(){
-  const{year,month,me}=st;
-  const summaryEl=document.getElementById('summary-row');
-  if(me===null){
-    summaryEl.innerHTML=`<div class="scard" style="min-width:auto"><span style="font-size:13px">관리자 보기</span>전체 현황은 시트에서 확인하세요</div>`;
+// st.events에 들어있는 모든 공대일(e:YYYY-M-D) 키를 파싱해
+// 오늘 이후(미래) 날짜만, 가까운 순서대로 정렬해 반환합니다.
+function getUpcomingEventDays(limit){
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  const list = Object.keys(st.events)
+    .filter(k => st.events[k]) // true인 것만
+    .map(k => {
+      // 형식: "e:YYYY-M-D"
+      const parts = k.slice(2).split('-');
+      const y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2]);
+      return { y, m, d, date: new Date(y, m, d) };
+    })
+    .filter(item => item.date >= today)
+    .sort((a,b) => a.date - b.date);
+
+  return limit ? list.slice(0, limit) : list;
+}
+
+const WEEKDAY_KR = ['일','월','화','수','목','금','토'];
+
+function renderUpcomingEvents(){
+  const el = document.getElementById('upcoming-events');
+  if(!el) return;
+
+  const upcoming = getUpcomingEventDays(3);
+
+  if(upcoming.length === 0){
+    el.innerHTML = `<div class="upcoming-title">📌 다가오는 공대일</div>
+      <div class="upcoming-empty">예정된 공대일이 없습니다</div>`;
     return;
   }
-  const dim=new Date(year,month+1,0).getDate();
-  let o=0,x=0,tri=0,none=0;
-  for(let d=1;d<=dim;d++){const s=getS(year,month,d,me);if(s==='o')o++;else if(s==='x')x++;else if(s==='tri')tri++;else none++;}
-  summaryEl.innerHTML=`
-    <div class="scard"><span>${o}</span>가능</div>
-    <div class="scard"><span>${x}</span>불가</div>
-    <div class="scard"><span>${tri}</span>특이사항</div>
-    <div class="scard"><span>${none}</span>미입력</div>`;
+
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  const chips = upcoming.map(item => {
+    const diffDays = Math.round((item.date - today) / 86400000);
+    const ddayLabel = diffDays === 0 ? 'D-Day' : `D-${diffDays}`;
+    const wd = WEEKDAY_KR[item.date.getDay()];
+    return `<div class="upcoming-chip">
+        <div class="ud-date">${item.m+1}월 ${item.d}일 (${wd})</div>
+        <div class="ud-dday">${ddayLabel}</div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="upcoming-title">📌 다가오는 공대일</div>
+    <div class="upcoming-list">${chips}</div>`;
 }
 
 function render(){
   const{year,month,me}=st,today=new Date(),isNow=today.getFullYear()===year&&today.getMonth()===month,todayD=today.getDate();
   document.getElementById('month-label').textContent=`${year}년 ${String(month+1).padStart(2,'0')}월`;
-  renderSummary();
+  renderUpcomingEvents();
   renderNotices();
   updateMultiSelectButton();
   const firstDay=new Date(year,month,1).getDay(),dim=new Date(year,month+1,0).getDate();
@@ -973,7 +1011,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v1.8 · 2026-06-21';
+const APP_VERSION = 'v1.9 · 2026-06-21';
 const versionBadge = document.getElementById('version-badge');
 if(versionBadge) versionBadge.textContent = APP_VERSION;
 
