@@ -24,7 +24,8 @@
     background:#f5f4f0;color:#2c2c2a;padding:20px;
     -webkit-font-smoothing:antialiased;
   }
-  .app{max-width:760px;margin:0 auto}
+  .app{max-width:760px;margin:0 auto;position:relative}
+  .version-badge{position:absolute;top:0;right:0;font-size:10px;color:#9a988f;background:#f5f4f0;border:1px solid #e5e3da;border-radius:10px;padding:2px 8px;font-family:monospace}
   h1{font-size:20px;font-weight:600;margin-bottom:1.25rem;display:flex;align-items:center;gap:8px}
 
   /* 로그인 */
@@ -193,6 +194,7 @@
 
   <!-- 캘린더 화면 -->
   <div id="cal-screen" style="display:none">
+    <div class="version-badge" id="version-badge"></div>
     <div class="topbar">
       <div class="month-nav">
         <button id="prev" aria-label="이전 달">‹</button>
@@ -535,8 +537,9 @@ document.getElementById('cal-body').addEventListener('touchend', (ev)=>{
   if(dx > TAP_MOVE_THRESHOLD || dy > TAP_MOVE_THRESHOLD) return; // 스크롤 의도로 판단, 무시
 
   // 터치를 뗀 "그 지점"을 기준으로 셀을 다시 판별합니다 (터치 시작 지점이 아님).
+  // 일괄 선택 모드 중에는 칩/메모점 같은 버튼 위를 눌러도 날짜 선택으로 처리합니다.
+  // (모바일에서는 칩이 작아서 정확히 빈 공간만 누르기 어렵기 때문입니다.)
   const el = document.elementFromPoint(touch.clientX, touch.clientY);
-  if(el && el.closest('button')) return; // 칩, 메모 점 등 내부 버튼은 무시
   const cell = el && el.closest('.day-cell[data-y]');
   if(!cell) return;
 
@@ -547,7 +550,6 @@ document.getElementById('cal-body').addEventListener('touchend', (ev)=>{
 
 document.getElementById('cal-body').addEventListener('click', (ev)=>{
   if(!multiSelect.active) return;
-  if(ev.target.closest('button')) return;
   // 방금 touchend에서 이미 처리했다면(400ms 이내), 뒤따라오는 합성 클릭은 무시합니다.
   if(Date.now() - lastTouchHandledAt < 400) return;
   const cell = ev.target.closest('.day-cell[data-y]');
@@ -937,8 +939,9 @@ function render(){
             chip.classList.add('mine');
             chip.title='클릭해서 선택';
             chip.onclick=(ev)=>{
+              if(multiSelect.active) return; // 일괄 선택 모드 중엔 stopPropagation을 호출하지 않아
+                                              // 클릭이 그대로 버블링되어 cal-body의 일괄선택 처리로 이어집니다.
               ev.stopPropagation();
-              if(multiSelect.active) return; // 일괄 선택 모드 중엔 개별 칩 클릭으로 팝업이 뜨지 않도록 막음
               openPicker(year,month,d);
             };
           }
@@ -949,7 +952,11 @@ function render(){
             nd.className='note-dot';
             nd.type='button';
             nd.title=(i===me?'내 특이사항 보기':`${mem.name}의 특이사항 보기`);
-            nd.onclick=(ev)=>{ev.stopPropagation();openViewNote(year,month,d,i);};
+            nd.onclick=(ev)=>{
+              if(multiSelect.active) return;
+              ev.stopPropagation();
+              openViewNote(year,month,d,i);
+            };
             slot.appendChild(nd);
           }
           slots.appendChild(slot);
@@ -963,6 +970,12 @@ function render(){
 }
 
 renderHint();
+
+// 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
+// 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
+const APP_VERSION = 'v1.8 · 2026-06-21';
+const versionBadge = document.getElementById('version-badge');
+if(versionBadge) versionBadge.textContent = APP_VERSION;
 
 document.getElementById('multi-select-btn').onclick = toggleMultiSelectMode;
 document.getElementById('multi-apply-btn').onclick = (ev)=>{
