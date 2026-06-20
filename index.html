@@ -85,6 +85,10 @@
   .day-cell.event-day .dnum-inner{color:#27500a}
   .day-cell.admin-clickable{cursor:pointer}
   .day-cell.admin-clickable:hover{outline:2px solid #639922;outline-offset:-2px}
+  .day-cell.multi-selected{background:#e3edf9!important;outline:2px solid #185fa5;outline-offset:-2px;position:relative}
+  .day-cell.multi-selected::after{content:'✓';position:absolute;top:3px;right:5px;font-size:12px;font-weight:700;color:#185fa5}
+  .day-cell.long-press-armed{outline:2px dashed #9a988f;outline-offset:-2px}
+  body.multi-select-active{user-select:none;-webkit-user-select:none}
   .event-badge{font-size:10px;color:#27500a;font-weight:700;margin-bottom:3px;background:#c0dd97;border-radius:4px;padding:1px 5px;display:inline-block}
   .dnum{font-size:12px;color:#2c2c2a;margin-bottom:3px;height:22px;display:flex;align-items:center}
   .dnum.sun{color:#e24b4a}
@@ -265,6 +269,27 @@
   </div>
 </div>
 
+<!-- 드래그 다중 선택 후 일괄 적용 팝업 -->
+<div class="modal-bg" id="bulk-picker-bg">
+  <div class="modal">
+    <div class="picker-date" id="bulk-picker-date"></div>
+    <div class="picker-opts">
+      <button class="popt" data-val="o"><div class="pchip s-o">O</div><span class="plabel">가능</span></button>
+      <button class="popt" data-val="x"><div class="pchip s-x">X</div><span class="plabel">불가</span></button>
+      <button class="popt" data-val="tri"><div class="pchip s-tri">△</div><span class="plabel">특이사항</span></button>
+      <button class="popt" data-val="none"><div class="pchip s-none">-</div><span class="plabel">미입력</span></button>
+    </div>
+    <div class="note-row" id="bulk-note-row">
+      <label>특이사항 내용 (선택한 모든 날짜에 동일하게 적용)</label>
+      <textarea id="bulk-picker-note" placeholder="내용을 입력하세요..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button id="bulk-picker-cancel">취소</button>
+      <button class="btn-save" id="bulk-picker-save">일괄 적용</button>
+    </div>
+  </div>
+</div>
+
 <!-- 멤버 설정 모달 -->
 <div class="modal-bg" id="settings-bg">
   <div class="modal settings-modal">
@@ -393,6 +418,148 @@ function renderNotices(){
 }
 function nkeyNotice(id){ return 'notice:'+id; }
 
+// ── 드래그 다중 선택 (롱프레스로 시작) ──
+const LONG_PRESS_MS = 380;
+
+function attachLongPressDrag(cell, y, m, d){
+  const key = dateKeyStr(y,m,d);
+  cell.setAttribute('data-mskey', key);
+
+  const startPress = (ev)=>{
+    // 멤버 칩, 메모 점 등 내부 버튼을 누른 경우는 기존 동작(상태 선택 팝업)을 그대로 둡니다.
+    if(ev.target.closest('button')) return;
+
+    clearTimeout(multiSelect.longPressTimer);
+    multiSelect.longPressTimer = setTimeout(()=>{
+      // 롱프레스 인식 — 드래그 다중선택 모드 시작
+      multiSelect.active = true;
+      multiSelect.armed = true;
+      multiSelect.selectedDates.clear();
+      multiSelect.selectedDates.add(key);
+      document.body.classList.add('multi-select-active');
+      if(navigator.vibrate) navigator.vibrate(15); // 지원 기기에서 살짝 진동 피드백
+      render();
+    }, LONG_PRESS_MS);
+  };
+
+  const cancelPress = ()=>{
+    clearTimeout(multiSelect.longPressTimer);
+  };
+
+  // 마우스(PC)
+  cell.addEventListener('mousedown', startPress);
+  cell.addEventListener('mouseup', cancelPress);
+  cell.addEventListener('mouseleave', cancelPress);
+
+  // 터치(모바일) — 길게 누른 뒤 손가락을 움직이면 그 아래 셀을 인식해서 선택
+  cell.addEventListener('touchstart', (ev)=>{
+    startPress(ev);
+  }, {passive:true});
+  cell.addEventListener('touchend', cancelPress);
+  cell.addEventListener('touchcancel', cancelPress);
+}
+
+// 마우스 드래그 중 포인터 아래에 있는 day-cell을 실시간으로 인식 (PC 지원)
+// render()가 드래그 도중 DOM을 다시 그리기 때문에, mouseenter만으로는 놓치는 경우가 있어
+// mousemove로 한 번 더 안정적으로 감지합니다.
+document.addEventListener('mousemove', (ev)=>{
+  if(!multiSelect.active) return;
+  const el = document.elementFromPoint(ev.clientX, ev.clientY);
+  const cell = el && el.closest('.day-cell[data-mskey]');
+  if(cell){
+    const key = cell.getAttribute('data-mskey');
+    if(key && !multiSelect.selectedDates.has(key)){
+      multiSelect.selectedDates.add(key);
+      render();
+    }
+  }
+});
+
+// 터치 드래그 중 손가락 아래에 있는 day-cell을 실시간으로 인식 (모바일 지원)
+document.addEventListener('touchmove', (ev)=>{
+  if(!multiSelect.active) return;
+  const touch = ev.touches[0];
+  if(!touch) return;
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  const cell = el && el.closest('.day-cell[data-mskey]');
+  if(cell){
+    const key = cell.getAttribute('data-mskey');
+    if(key && !multiSelect.selectedDates.has(key)){
+      multiSelect.selectedDates.add(key);
+      render();
+    }
+  }
+}, {passive:true});
+
+// 마우스/터치를 떼면 드래그 종료 → 선택된 게 1개 이상이면 일괄 적용 팝업 오픈
+function finishMultiSelectIfActive(){
+  if(!multiSelect.active) return;
+  multiSelect.active = false;
+  document.body.classList.remove('multi-select-active');
+  if(multiSelect.selectedDates.size >= 1){
+    openBulkPicker();
+  } else {
+    render();
+  }
+}
+document.addEventListener('mouseup', finishMultiSelectIfActive);
+document.addEventListener('touchend', finishMultiSelectIfActive);
+
+function openBulkPicker(){
+  multiSelect.bulkSel = null;
+  const count = multiSelect.selectedDates.size;
+  document.getElementById('bulk-picker-date').innerHTML =
+    `<b>${members[st.me] ? members[st.me].name : ''}</b> · 선택한 <b>${count}개</b> 날짜에 일괄 적용`;
+  document.getElementById('bulk-picker-note').value = '';
+  updateBulkPickerUI();
+  document.getElementById('bulk-picker-bg').classList.add('open');
+}
+function updateBulkPickerUI(){
+  document.querySelectorAll('#bulk-picker-bg .popt').forEach(b=>{
+    b.classList.toggle('sel', b.dataset.val===multiSelect.bulkSel);
+  });
+  document.getElementById('bulk-note-row').classList.toggle('show', multiSelect.bulkSel==='tri');
+}
+document.querySelectorAll('#bulk-picker-bg .popt').forEach(b=>{
+  b.onclick=()=>{ multiSelect.bulkSel=b.dataset.val; updateBulkPickerUI(); };
+});
+document.getElementById('bulk-picker-cancel').onclick=()=>{
+  document.getElementById('bulk-picker-bg').classList.remove('open');
+  multiSelect.selectedDates.clear();
+  render();
+};
+document.getElementById('bulk-picker-bg').onclick=(e)=>{
+  if(e.target===e.currentTarget){
+    document.getElementById('bulk-picker-bg').classList.remove('open');
+    multiSelect.selectedDates.clear();
+    render();
+  }
+};
+document.getElementById('bulk-picker-save').onclick=async()=>{
+  if(st.me===null || st.me===undefined) return; // 관리자는 멤버 응답 입력 대상이 아님
+  const sel = multiSelect.bulkSel || 'none';
+  const note = sel==='tri' ? document.getElementById('bulk-picker-note').value : '';
+  const dates = Array.from(multiSelect.selectedDates);
+
+  document.getElementById('bulk-picker-bg').classList.remove('open');
+
+  for(const key of dates){
+    const [y,m,d] = key.split('-').map(Number);
+    setS(y,m,d,st.me,sel);
+    setN(y,m,d,st.me,note);
+  }
+  saveLocal();
+  render();
+
+  // 시트에는 순차적으로 저장 (여러 날짜를 한 번에 보내는 API가 없으므로 하나씩 호출)
+  for(const key of dates){
+    const [y,m,d] = key.split('-').map(Number);
+    await sheetSet(dkey(y,m,d,st.me), sel, note);
+  }
+
+  multiSelect.selectedDates.clear();
+};
+
 function loadSession(){
   try{
     const raw=localStorage.getItem(SESSION_KEY);
@@ -427,6 +594,16 @@ let st={
   notices: saved && saved.notices ? saved.notices : []
 };
 let pickerTarget=null,pickerSel=null;
+
+// ── 드래그 다중 선택 상태 ──
+let multiSelect = {
+  active: false,        // 현재 드래그로 선택 중인지
+  armed: false,         // 롱프레스가 인식되어 드래그 대기 중인지
+  longPressTimer: null,
+  selectedDates: new Set(), // "y-m-d" 형식의 문자열 집합
+  bulkSel: null          // 일괄 적용 팝업에서 선택된 상태값
+};
+function dateKeyStr(y,m,d){ return `${y}-${m}-${d}`; }
 
 function dkey(y,m,d,i){return`${y}-${m}-${d}-${i}`}
 function nkey(y,m,d,i){return`n:${y}-${m}-${d}-${i}`}
@@ -681,6 +858,12 @@ function render(){
             if(ev.target.closest('button')) return;
             toggleEventDay(year,month,d);
           };
+        } else if (me !== null) {
+          // 일반 멤버: 날짜 칸을 길게 누른 뒤 드래그하면 여러 날짜를 한 번에 선택할 수 있습니다.
+          attachLongPressDrag(td, year, month, d);
+          if(multiSelect.selectedDates.has(dateKeyStr(year,month,d))){
+            td.classList.add('multi-selected');
+          }
         }
         const dn=document.createElement('div');
         dn.className='dnum'+(col===0?' sun':col===6?' sat':'');
