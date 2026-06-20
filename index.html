@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 브라우저가 이 페이지를 캐시하지 않도록 요청합니다.
+     GitHub Pages는 정적 호스팅이라 서버 단에서 완전히 강제할 수는 없지만,
+     대부분의 최신 브라우저는 이 신호를 존중해 매번 새로 받아옵니다. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>8인 공유 캘린더</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
@@ -277,6 +283,14 @@
 </div>
 
 <script>
+// 브라우저가 뒤로가기/캐시(bfcache)에서 이 페이지를 그대로 복원할 경우,
+// 자동으로 한 번 강제 새로고침해서 항상 최신 버전을 보도록 합니다.
+window.addEventListener('pageshow', function(event){
+  if(event.persisted){
+    window.location.reload();
+  }
+});
+
 const DEFAULT_MEMBERS=[
   {name:'필로시코스',code:'1111'},{name:'똥싸개',code:'2222'},{name:'세일룬',code:'3333'},{name:'마시로토모야',code:'4444'},
   {name:'미루나무',code:'5555'},{name:'파피용',code:'6666'},{name:'김활명',code:'7777'},{name:'신희',code:'8888'}
