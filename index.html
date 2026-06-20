@@ -486,19 +486,14 @@ document.addEventListener('click', (ev)=>{
 // 날짜 칸을 클릭 가능하게 만들고, 일괄 선택 모드일 때는 클릭으로 토글 선택되게 합니다.
 // 날짜 칸에 data-y, data-m, data-d 속성만 심어둡니다.
 // 실제 클릭 처리는 cal-body 하나에 이벤트 위임으로 등록되어 있어,
-// render()가 매번 DOM을 새로 그려도 별도 재바인딩이 필요 없고
-// 모바일에서 발생하던 "선택이 엉뚱한 날짜로 잡히는" 타이밍 문제가 사라집니다.
+// render()가 매번 DOM을 새로 그려도 별도 재바인딩이 필요 없습니다.
 function attachCellClick(cell, y, m, d){
   cell.setAttribute('data-y', y);
   cell.setAttribute('data-m', m);
   cell.setAttribute('data-d', d);
 }
 
-// cal-body 전체에 클릭을 한 번만 위임 등록 (모바일 터치 타이밍 이슈 방지)
-document.getElementById('cal-body').addEventListener('click', (ev)=>{
-  if(!multiSelect.active) return;
-  if(ev.target.closest('button')) return; // 칩, 메모 점 등은 무시
-  const cell = ev.target.closest('.day-cell[data-y]');
+function toggleCellSelection(cell){
   if(!cell) return;
   const y = Number(cell.getAttribute('data-y'));
   const m = Number(cell.getAttribute('data-m'));
@@ -511,6 +506,53 @@ document.getElementById('cal-body').addEventListener('click', (ev)=>{
   }
   updateMultiSelectButton();
   render();
+}
+
+// cal-body 전체에 이벤트를 위임 등록합니다.
+//
+// 모바일에서는 "터치를 시작한 지점"과 "터치를 뗀 지점"을 둘 다 기록해,
+// 두 지점 사이 이동 거리가 짧으면(=탭/선택 의도) 처리하고
+// 이동 거리가 길면(=스크롤 의도) 무시합니다.
+// 처리된 터치 뒤에 따라오는 합성 click 이벤트는 중복 처리되지 않도록 걸러냅니다.
+let touchStartPoint = null;
+let lastTouchHandledAt = 0;
+const TAP_MOVE_THRESHOLD = 10; // px — 이보다 적게 움직였으면 탭으로 간주
+
+document.getElementById('cal-body').addEventListener('touchstart', (ev)=>{
+  const touch = ev.touches[0];
+  touchStartPoint = touch ? {x: touch.clientX, y: touch.clientY} : null;
+}, {passive:true});
+
+document.getElementById('cal-body').addEventListener('touchend', (ev)=>{
+  if(!multiSelect.active) return;
+  if(!touchStartPoint) return;
+
+  const touch = ev.changedTouches[0];
+  if(!touch) return;
+  const dx = Math.abs(touch.clientX - touchStartPoint.x);
+  const dy = Math.abs(touch.clientY - touchStartPoint.y);
+  touchStartPoint = null;
+  if(dx > TAP_MOVE_THRESHOLD || dy > TAP_MOVE_THRESHOLD) return; // 스크롤 의도로 판단, 무시
+
+  // 터치를 뗀 "그 지점"을 기준으로 셀을 다시 판별합니다 (터치 시작 지점이 아님).
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  if(el && el.closest('button')) return; // 칩, 메모 점 등 내부 버튼은 무시
+  const cell = el && el.closest('.day-cell[data-y]');
+  if(!cell) return;
+
+  ev.preventDefault(); // 뒤따르는 합성 click을 막아 중복 처리 방지
+  lastTouchHandledAt = Date.now();
+  toggleCellSelection(cell);
+}, {passive:false});
+
+document.getElementById('cal-body').addEventListener('click', (ev)=>{
+  if(!multiSelect.active) return;
+  if(ev.target.closest('button')) return;
+  // 방금 touchend에서 이미 처리했다면(400ms 이내), 뒤따라오는 합성 클릭은 무시합니다.
+  if(Date.now() - lastTouchHandledAt < 400) return;
+  const cell = ev.target.closest('.day-cell[data-y]');
+  if(!cell) return;
+  toggleCellSelection(cell);
 });
 
 
