@@ -88,9 +88,12 @@
   .day-cell.multi-selected{background:#e3edf9!important;outline:2px solid #185fa5;outline-offset:-2px;position:relative}
   .day-cell.multi-selected::after{content:'✓';position:absolute;top:3px;right:5px;font-size:12px;font-weight:700;color:#185fa5}
   body.multi-select-active{user-select:none;-webkit-user-select:none}
-  .multi-select-btn{display:block;width:100%;margin-bottom:10px;padding:10px;border:1px solid #d8d6cc;border-radius:8px;background:#fff;color:#2c2c2a;font-size:13px;font-weight:600;cursor:pointer}
+  .multi-select-row{display:flex;gap:8px;margin-bottom:10px}
+  .multi-select-btn{flex:1;padding:10px;border:1px solid #d8d6cc;border-radius:8px;background:#fff;color:#2c2c2a;font-size:13px;font-weight:600;cursor:pointer}
   .multi-select-btn:hover{background:#f5f4f0}
-  .multi-select-btn.active{background:#185fa5;color:#fff;border-color:#185fa5}
+  .multi-select-btn.active{background:#f5f4f0;color:#2c2c2a;border-color:#a32d2d;color:#a32d2d}
+  .multi-apply-btn{flex:1;padding:10px;border:1px solid #185fa5;border-radius:8px;background:#185fa5;color:#fff;font-size:13px;font-weight:600;cursor:pointer}
+  .multi-apply-btn:hover{background:#0c447c}
   .event-badge{font-size:10px;color:#27500a;font-weight:700;margin-bottom:3px;background:#c0dd97;border-radius:4px;padding:1px 5px;display:inline-block}
   .dnum{font-size:12px;color:#2c2c2a;margin-bottom:3px;height:22px;display:flex;align-items:center}
   .dnum.sun{color:#e24b4a}
@@ -204,7 +207,10 @@
     </div>
     <div class="sync-status" id="sync-status"><div class="sync-dot" id="sync-dot"></div><span id="sync-text">시트 미연결 — 이 브라우저에만 저장됩니다</span></div>
     <div class="summary-row" id="summary-row"></div>
-    <button class="multi-select-btn" id="multi-select-btn" style="display:none">☑ 여러 날짜 일괄 선택</button>
+    <div class="multi-select-row" id="multi-select-row" style="display:none">
+      <button class="multi-select-btn" id="multi-select-btn">☑ 여러 날짜 일괄 선택</button>
+      <button class="multi-apply-btn" id="multi-apply-btn" style="display:none">✓ 0개 선택됨 · 적용하기</button>
+    </div>
     <table class="cal-table" role="grid">
       <thead><tr>
         <th class="sun">일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th class="sat">토</th>
@@ -422,16 +428,12 @@ function renderNotices(){
 function nkeyNotice(id){ return 'notice:'+id; }
 
 // ── 일괄 선택 모드 ──
-// "일괄 선택" 버튼으로 모드를 켜고, 날짜 칸을 하나씩 클릭해 선택한 뒤,
-// 다시 버튼을 누르면(또는 자동으로) O/X/△ 선택 팝업이 떠서 한 번에 적용됩니다.
+// "일괄 선택" 버튼은 모드를 켜고 끄는(취소) 역할만 합니다.
+// 날짜를 1개 이상 선택하면 별도의 "적용하기" 버튼이 나타나고, 그걸 눌러야 O/X/△ 팝업이 뜹니다.
 function toggleMultiSelectMode(){
   if(multiSelect.active){
-    // 이미 켜져 있는 상태에서 다시 누르면: 선택된 게 있으면 적용 팝업, 없으면 그냥 모드 종료
-    if(multiSelect.selectedDates.size > 0){
-      openBulkPicker();
-    } else {
-      exitMultiSelectMode();
-    }
+    // 켜져 있는 상태에서 토글 버튼을 다시 누르면 항상 취소합니다.
+    exitMultiSelectMode();
   } else {
     multiSelect.active = true;
     multiSelect.selectedDates.clear();
@@ -448,43 +450,68 @@ function exitMultiSelectMode(){
   render();
 }
 function updateMultiSelectButton(){
-  const btn = document.getElementById('multi-select-btn');
-  if(!btn) return;
+  const toggleBtn = document.getElementById('multi-select-btn');
+  const applyBtn = document.getElementById('multi-apply-btn');
+  const row = document.getElementById('multi-select-row');
+  if(!toggleBtn || !applyBtn || !row) return;
+
   const count = multiSelect.selectedDates.size;
+
   if(multiSelect.active){
-    btn.textContent = count > 0 ? `✓ ${count}개 선택됨 · 적용하기` : '날짜를 선택하세요 (바깥을 누르면 취소)';
-    btn.classList.add('active');
+    toggleBtn.textContent = '✕ 선택 취소';
+    toggleBtn.classList.add('active');
+    if(count > 0){
+      applyBtn.style.display = 'block';
+      applyBtn.textContent = `✓ ${count}개 선택됨 · 적용하기`;
+    } else {
+      applyBtn.style.display = 'none';
+    }
   } else {
-    btn.textContent = '☑ 여러 날짜 일괄 선택';
-    btn.classList.remove('active');
+    toggleBtn.textContent = '☑ 여러 날짜 일괄 선택';
+    toggleBtn.classList.remove('active');
+    applyBtn.style.display = 'none';
   }
 }
 
-// 일괄 선택 모드가 켜진 상태에서 캘린더(날짜 칸, 버튼) 바깥을 클릭하면 자동으로 모드를 취소합니다.
+// 일괄 선택 모드가 켜진 상태에서 캘린더(날짜 칸, 버튼들) 바깥을 클릭하면 자동으로 모드를 취소합니다.
 // 단, 상태 선택 팝업 등 모달이 열려 있을 때는 그 모달 클릭까지 취소로 처리되지 않도록 제외합니다.
 document.addEventListener('click', (ev)=>{
   if(!multiSelect.active) return;
-  if(ev.target.closest('.day-cell')) return;       // 날짜 칸 클릭은 선택/해제 동작이므로 제외
-  if(ev.target.closest('#multi-select-btn')) return; // 버튼 자체 클릭은 toggleMultiSelectMode가 처리
-  if(ev.target.closest('.modal-bg')) return;          // 팝업(모달) 내부/배경 클릭은 제외
+  if(ev.target.closest('.day-cell')) return;          // 날짜 칸 클릭은 선택/해제 동작이므로 제외
+  if(ev.target.closest('#multi-select-row')) return;  // 토글/적용 버튼 자체는 각자 핸들러가 처리
+  if(ev.target.closest('.modal-bg')) return;            // 팝업(모달) 내부/배경 클릭은 제외
   exitMultiSelectMode();
 });
 
 // 날짜 칸을 클릭 가능하게 만들고, 일괄 선택 모드일 때는 클릭으로 토글 선택되게 합니다.
+// 날짜 칸에 data-y, data-m, data-d 속성만 심어둡니다.
+// 실제 클릭 처리는 cal-body 하나에 이벤트 위임으로 등록되어 있어,
+// render()가 매번 DOM을 새로 그려도 별도 재바인딩이 필요 없고
+// 모바일에서 발생하던 "선택이 엉뚱한 날짜로 잡히는" 타이밍 문제가 사라집니다.
 function attachCellClick(cell, y, m, d){
-  const key = dateKeyStr(y,m,d);
-  cell.addEventListener('click', (ev)=>{
-    if(!multiSelect.active) return; // 일괄 선택 모드가 아니면 평소 동작(칩 클릭 등)을 그대로 둠
-    if(ev.target.closest('button')) return; // 칩, 메모 점 등은 무시
-    if(multiSelect.selectedDates.has(key)){
-      multiSelect.selectedDates.delete(key);
-    } else {
-      multiSelect.selectedDates.add(key);
-    }
-    updateMultiSelectButton();
-    render();
-  });
+  cell.setAttribute('data-y', y);
+  cell.setAttribute('data-m', m);
+  cell.setAttribute('data-d', d);
 }
+
+// cal-body 전체에 클릭을 한 번만 위임 등록 (모바일 터치 타이밍 이슈 방지)
+document.getElementById('cal-body').addEventListener('click', (ev)=>{
+  if(!multiSelect.active) return;
+  if(ev.target.closest('button')) return; // 칩, 메모 점 등은 무시
+  const cell = ev.target.closest('.day-cell[data-y]');
+  if(!cell) return;
+  const y = Number(cell.getAttribute('data-y'));
+  const m = Number(cell.getAttribute('data-m'));
+  const d = Number(cell.getAttribute('data-d'));
+  const key = dateKeyStr(y,m,d);
+  if(multiSelect.selectedDates.has(key)){
+    multiSelect.selectedDates.delete(key);
+  } else {
+    multiSelect.selectedDates.add(key);
+  }
+  updateMultiSelectButton();
+  render();
+});
 
 
 function openBulkPicker(){
@@ -760,8 +787,8 @@ function enterCalendar(idx, isAdmin){
   document.getElementById('settings-btn').style.display = isAdmin ? '' : 'none';
   const noticeForm = document.querySelector('.notice-form');
   if(noticeForm) noticeForm.style.display = isAdmin ? 'none' : 'flex';
-  const multiBtn = document.getElementById('multi-select-btn');
-  if(multiBtn) multiBtn.style.display = isAdmin ? 'none' : 'block';
+  const multiRow = document.getElementById('multi-select-row');
+  if(multiRow) multiRow.style.display = isAdmin ? 'none' : 'flex';
   if(apiUrl) sheetGet(); else render();
 }
 
@@ -896,6 +923,10 @@ function render(){
 renderHint();
 
 document.getElementById('multi-select-btn').onclick = toggleMultiSelectMode;
+document.getElementById('multi-apply-btn').onclick = (ev)=>{
+  ev.stopPropagation();
+  if(multiSelect.selectedDates.size > 0) openBulkPicker();
+};
 
 // ── 공지 등록 ──
 async function submitNotice(){
