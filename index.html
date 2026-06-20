@@ -133,6 +133,23 @@
     .slot-name{display:none}
     h1{font-size:17px}
   }
+
+  /* ── 전체 공지 게시판 ── */
+  .notice-board{margin-top:1.5rem;background:#fff;border:1px solid #e5e3da;border-radius:12px;padding:1.25rem}
+  .notice-board h2{font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+  .notice-form{display:flex;gap:8px;margin-bottom:14px}
+  .notice-form input{flex:1;border:1px solid #d8d6cc;border-radius:8px;padding:9px 12px;font-size:13px;font-family:inherit;color:#2c2c2a;background:#f9f8f4}
+  .notice-form input:focus{outline:2px solid #185fa5}
+  .notice-form button{border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;background:#185fa5;color:#fff;white-space:nowrap}
+  .notice-form button:hover{background:#0c447c}
+  .notice-list{display:flex;flex-direction:column;gap:8px}
+  .notice-item{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:#f9f8f4;border-radius:8px;border:1px solid #efeee8}
+  .notice-author{font-size:12px;font-weight:600;color:#0c447c;white-space:nowrap;flex-shrink:0}
+  .notice-text{font-size:13px;color:#2c2c2a;flex:1;word-break:break-word;white-space:pre-wrap}
+  .notice-time{font-size:10px;color:#9a988f;flex-shrink:0;margin-top:1px}
+  .notice-del{border:none;background:transparent;color:#9a988f;cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0;line-height:1}
+  .notice-del:hover{color:#a32d2d}
+  .notice-empty{font-size:12px;color:#9a988f;text-align:center;padding:12px 0}
 </style>
 </head>
 <body>
@@ -187,6 +204,15 @@
         <div style="width:14px;height:14px;background:#eaf3de;border-radius:3px;border:1px solid #c0dd97"></div>
         <span>공대일</span>
       </div>
+    </div>
+
+    <div class="notice-board">
+      <h2>📌 전체 공지</h2>
+      <div class="notice-form">
+        <input type="text" id="notice-input" placeholder="공지/메모를 입력하세요..." maxlength="300"/>
+        <button id="notice-submit">등록</button>
+      </div>
+      <div class="notice-list" id="notice-list"></div>
     </div>
   </div>
 </div>
@@ -264,7 +290,7 @@ function loadLocal(){
 }
 function saveLocal(){
   try{
-    localStorage.setItem(LS_KEY, JSON.stringify({members, apiUrl, data: st.data, notes: st.notes, events: st.events}));
+    localStorage.setItem(LS_KEY, JSON.stringify({members, apiUrl, data: st.data, notes: st.notes, events: st.events, notices: st.notices}));
   }catch(e){}
 }
 function ekey(y,m,d){return`e:${y}-${m}-${d}`}
@@ -273,6 +299,79 @@ function setEventDay(y,m,d,on){
   if(on) st.events[ekey(y,m,d)]=true;
   else delete st.events[ekey(y,m,d)];
 }
+
+// ── 전체 공지 게시판 ──
+// 각 공지: { id, authorIdx, authorName, text, ts }
+async function addNotice(text){
+  if(st.me===null || st.me===undefined) return null; // 관리자는 멤버가 아니므로 작성 불가
+  const item = {
+    id: 'n' + Date.now() + Math.random().toString(36).slice(2,7),
+    authorIdx: st.me,
+    authorName: members[st.me].name,
+    text: text,
+    ts: Date.now()
+  };
+  st.notices.unshift(item); // 최신이 위로
+  saveLocal();
+  await sheetSet(nkeyNotice(item.id), JSON.stringify({authorIdx:item.authorIdx, authorName:item.authorName, ts:item.ts}), item.text);
+  return item;
+}
+async function removeNoticeEverywhere(id){
+  st.notices = st.notices.filter(n => n.id !== id);
+  saveLocal();
+  await sheetSet(nkeyNotice(id), 'deleted', '');
+}
+function canDeleteNotice(n){
+  // 작성자 본인만 삭제 가능. 관리자는 전체 운영 차원에서 삭제 허용.
+  return st.isAdmin || (st.me!==null && n.authorIdx===st.me);
+}
+function fmtNoticeTime(ts){
+  const d = new Date(ts);
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mi = String(d.getMinutes()).padStart(2,'0');
+  return `${mm}.${dd} ${hh}:${mi}`;
+}
+function renderNotices(){
+  const list = document.getElementById('notice-list');
+  if(!list) return;
+  if(!st.notices || st.notices.length===0){
+    list.innerHTML = '<div class="notice-empty">등록된 공지가 없습니다</div>';
+    return;
+  }
+  list.innerHTML='';
+  st.notices.forEach(n=>{
+    const item=document.createElement('div');
+    item.className='notice-item';
+    const author=document.createElement('div');
+    author.className='notice-author';
+    author.textContent=n.authorName+' :';
+    const text=document.createElement('div');
+    text.className='notice-text';
+    text.textContent=n.text;
+    const time=document.createElement('div');
+    time.className='notice-time';
+    time.textContent=fmtNoticeTime(n.ts);
+    item.appendChild(author);
+    item.appendChild(text);
+    item.appendChild(time);
+    if(canDeleteNotice(n)){
+      const del=document.createElement('button');
+      del.className='notice-del';
+      del.textContent='✕';
+      del.title='삭제';
+      del.onclick=async()=>{
+        await removeNoticeEverywhere(n.id);
+        renderNotices();
+      };
+      item.appendChild(del);
+    }
+    list.appendChild(item);
+  });
+}
+function nkeyNotice(id){ return 'notice:'+id; }
+
 function loadSession(){
   try{
     const raw=localStorage.getItem(SESSION_KEY);
@@ -303,7 +402,8 @@ let st={
   isAdmin:false,
   data: saved && saved.data ? saved.data : {},
   notes: saved && saved.notes ? saved.notes : {},
-  events: saved && saved.events ? saved.events : {}
+  events: saved && saved.events ? saved.events : {},
+  notices: saved && saved.notices ? saved.notices : []
 };
 let pickerTarget=null,pickerSel=null;
 
@@ -338,15 +438,32 @@ async function sheetGet(){
     const json=await r.json();
     if(json.data){
       st.data={};st.notes={};st.events={};
+      const noticeMap={};
       json.data.forEach(row=>{
         if(!row.key) return;
         if(row.key.startsWith('e:')){
           if(row.status==='on') st.events[row.key]=true;
           return;
         }
+        if(row.key.startsWith('notice:')){
+          const id=row.key.slice('notice:'.length);
+          if(row.status==='deleted') return; // 삭제된 공지는 건너뜀
+          try{
+            const meta=JSON.parse(row.status||'{}');
+            noticeMap[id]={
+              id,
+              authorIdx: meta.authorIdx,
+              authorName: meta.authorName || '익명',
+              text: row.note || '',
+              ts: meta.ts || Date.now()
+            };
+          }catch(e){}
+          return;
+        }
         if(row.status) st.data[row.key]=row.status;
         if(row.note) st.notes['n:'+row.key]=row.note;
       });
+      st.notices = Object.values(noticeMap).sort((a,b)=>b.ts-a.ts);
       saveLocal();
     }
     setSyncStatus('','시트 연결됨 · 방금 동기화');
@@ -462,6 +579,8 @@ function enterCalendar(idx, isAdmin){
   const badgeLabel = isAdmin ? '👤 관리자' : '👤 '+members[idx].name;
   document.getElementById('user-badge').textContent=badgeLabel;
   document.getElementById('settings-btn').style.display = isAdmin ? '' : 'none';
+  const noticeForm = document.querySelector('.notice-form');
+  if(noticeForm) noticeForm.style.display = isAdmin ? 'none' : 'flex';
   if(apiUrl) sheetGet(); else render();
 }
 
@@ -516,6 +635,7 @@ function render(){
   const{year,month,me}=st,today=new Date(),isNow=today.getFullYear()===year&&today.getMonth()===month,todayD=today.getDate();
   document.getElementById('month-label').textContent=`${year}년 ${String(month+1).padStart(2,'0')}월`;
   renderSummary();
+  renderNotices();
   const firstDay=new Date(year,month,1).getDay(),dim=new Date(year,month+1,0).getDate();
   const tbody=document.getElementById('cal-body');tbody.innerHTML='';
   let day=1;
@@ -574,6 +694,22 @@ function render(){
 }
 
 renderHint();
+
+// ── 공지 등록 ──
+async function submitNotice(){
+  const input = document.getElementById('notice-input');
+  const text = input.value.trim();
+  if(!text) return;
+  if(st.me===null || st.me===undefined){
+    alert('관리자 계정은 공지를 작성할 수 없어요. 멤버 코드로 로그인해주세요.');
+    return;
+  }
+  input.value='';
+  await addNotice(text);
+  renderNotices();
+}
+document.getElementById('notice-submit').onclick = submitNotice;
+document.getElementById('notice-input').onkeydown = (e) => { if(e.key==='Enter') submitNotice(); };
 
 // 저장된 로그인 세션이 있으면 자동으로 입장
 (function tryAutoLogin(){
