@@ -1044,14 +1044,48 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v2.3 · 2026-06-29';
+const APP_VERSION = 'v2.4 · 2026-06-29';
 
 // ── 카카오 톡캘린더 연동 ──────────────────────────────────────────
 // ── 카카오 JS SDK 초기화 ──
-// SDK가 로드된 후 초기화합니다.
 window.addEventListener('load', function(){
   if(window.Kakao && !Kakao.isInitialized()){
     Kakao.init('c0875abc5918a4ed9cd1a1d9f5f3a84e');
+  }
+
+  // 카카오 로그인 후 리다이렉트로 돌아온 경우 — URL의 code로 토큰 교환
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code');
+  if(code && window.Kakao && Kakao.isInitialized()){
+    // URL 파라미터 정리 (새로고침 시 중복 처리 방지)
+    history.replaceState({}, '', location.origin + location.pathname);
+
+    // SDK 내부 토큰 교환
+    Kakao.Auth.setAccessToken = Kakao.Auth.setAccessToken || function(){};
+    fetch('https://kauth.kakao.com/oauth/token', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: 'f3fe8ee7b7bb7a903499fac54f0cb6ba', // REST API 키 (토큰 교환용)
+        redirect_uri: location.origin + location.pathname,
+        code: code
+      })
+    })
+    .then(r => r.json())
+    .then(data => {
+      if(data.access_token){
+        kakaoAccessToken = data.access_token;
+        localStorage.setItem('kakao_token', kakaoAccessToken);
+        updateKakaoUI(true);
+        // 로그인 직후 자동으로 공대일 추가 실행
+        addUpcomingEventDaysToKakao();
+      } else {
+        console.error('카카오 토큰 오류:', data);
+        alert('카카오 로그인 처리 중 오류가 발생했어요.\n다시 시도해주세요.');
+      }
+    })
+    .catch(e => console.error('카카오 토큰 요청 실패:', e));
   }
 });
 
@@ -1088,24 +1122,17 @@ function updateKakaoUI(connected){
 }
 
 // Kakao JS SDK로 로그인 — 팝업 방식이라 리다이렉트 없이 바로 토큰 획득
+// 카카오 JS SDK 최신 버전은 Kakao.Auth.authorize (리다이렉트 방식) 사용
 function kakaoLogin(){
   if(!window.Kakao || !Kakao.isInitialized()){
     alert('카카오 SDK 로딩 중입니다. 잠시 후 다시 눌러주세요.');
     return;
   }
-  Kakao.Auth.login({
-    scope: 'talk_calendar',
-    success: function(authObj){
-      kakaoAccessToken = authObj.access_token;
-      localStorage.setItem('kakao_token', kakaoAccessToken);
-      updateKakaoUI(true);
-      // 로그인 성공 시 바로 공대일 추가 실행
-      addUpcomingEventDaysToKakao();
-    },
-    fail: function(err){
-      console.error('카카오 로그인 실패:', err);
-      alert('카카오 로그인에 실패했어요.\n잠시 후 다시 시도해주세요.');
-    }
+  // 로그인 후 돌아올 현재 페이지 주소
+  const redirectUri = location.origin + location.pathname;
+  Kakao.Auth.authorize({
+    redirectUri: redirectUri,
+    scope: 'talk_calendar'
   });
 }
 
