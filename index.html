@@ -177,6 +177,14 @@
   .notice-del{border:none;background:transparent;color:#9a988f;cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0;line-height:1}
   .notice-del:hover{color:#a32d2d}
   .notice-empty{font-size:12px;color:#9a988f;text-align:center;padding:12px 0}
+  /* 카카오 캘린더 연동 */
+  .kakao-cal-section{margin-bottom:10px}
+  .kakao-cal-btn{display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border:1px solid #FEE500;border-radius:8px;background:#FEE500;color:#191919;font-size:13px;font-weight:600;cursor:pointer}
+  .kakao-cal-btn:hover{background:#F5DC00}
+  .kakao-cal-btn svg{width:18px;height:18px;flex-shrink:0}
+  .kakao-cal-status{font-size:12px;color:#6b6a64;margin-top:6px;display:flex;align-items:center;gap:6px}
+  .kakao-cal-status .k-dot{width:7px;height:7px;border-radius:50%;background:#97c459;flex-shrink:0}
+  .kakao-cal-status .k-dot.disconnected{background:#9a988f}
 </style>
 </head>
 <body>
@@ -213,6 +221,18 @@
     </div>
     <div class="sync-status" id="sync-status"><div class="sync-dot" id="sync-dot"></div><span id="sync-text">시트 미연결 — 이 브라우저에만 저장됩니다</span></div>
     <div class="upcoming-events" id="upcoming-events"></div>
+    <div class="kakao-cal-section" id="kakao-cal-section" style="display:none">
+      <button class="kakao-cal-btn" id="kakao-cal-btn">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2C6.477 2 2 5.813 2 10.5c0 2.99 1.817 5.616 4.555 7.178L5.5 21.5l4.59-2.927C10.69 18.857 11.34 19 12 19c5.523 0 10-3.813 10-8.5S17.523 2 12 2z" fill="#191919"/>
+        </svg>
+        <span id="kakao-cal-btn-text">카카오 캘린더에 공대일 추가하기</span>
+      </button>
+      <div class="kakao-cal-status" id="kakao-cal-status" style="display:none">
+        <div class="k-dot" id="kakao-status-dot"></div>
+        <span id="kakao-status-text"></span>
+      </div>
+    </div>
     <div class="multi-select-row" id="multi-select-row" style="display:none">
       <button class="multi-select-btn" id="multi-select-btn">☑ 여러 날짜 일괄 선택</button>
       <button class="multi-apply-btn" id="multi-apply-btn" style="display:none">✓ 0개 선택됨 · 적용하기</button>
@@ -837,6 +857,15 @@ function enterCalendar(idx, isAdmin){
   if(noticeForm) noticeForm.style.display = isAdmin ? 'none' : 'flex';
   const multiRow = document.getElementById('multi-select-row');
   if(multiRow) multiRow.style.display = isAdmin ? 'none' : 'flex';
+  // 카카오 캘린더 버튼 — 일반 멤버만 표시
+  const kakaoSection = document.getElementById('kakao-cal-section');
+  if(kakaoSection){
+    kakaoSection.style.display = isAdmin ? 'none' : 'block';
+    if(!isAdmin){
+      const connected = loadKakaoToken();
+      updateKakaoUI(connected);
+    }
+  }
   if(apiUrl) sheetGet(); else render();
 }
 
@@ -1011,7 +1040,171 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v1.9 · 2026-06-21';
+const APP_VERSION = 'v2.0 · 2026-06-29';
+
+// ── 카카오 톡캘린더 연동 ──────────────────────────────────────────
+const KAKAO_REST_API_KEY = 'f3fe8ee7b7bb7a903499fac54f0cb6ba';
+// 카카오 로그인 후 돌아올 주소 (현재 페이지)
+const KAKAO_REDIRECT_URI = location.origin + location.pathname;
+
+let kakaoAccessToken = null;
+
+// 페이지 로드 시 카카오 토큰 확인 (로그인 후 리다이렉트로 돌아온 경우)
+(function checkKakaoCallback(){
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code');
+  if(!code) return;
+
+  // URL에서 code 파라미터 제거 (새로고침 시 중복 처리 방지)
+  const cleanUrl = location.origin + location.pathname;
+  history.replaceState({}, '', cleanUrl);
+
+  // 인증 코드로 액세스 토큰 교환
+  // 카카오는 CORS 정책상 클라이언트에서 직접 토큰 교환이 가능
+  fetch('https://kauth.kakao.com/oauth/token', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: KAKAO_REST_API_KEY,
+      redirect_uri: KAKAO_REDIRECT_URI,
+      code: code
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if(data.access_token){
+      kakaoAccessToken = data.access_token;
+      localStorage.setItem('kakao_token', kakaoAccessToken);
+      updateKakaoUI(true);
+      // 대기 중이던 공대일 추가 자동 실행
+      if(pendingKakaoSync){
+        pendingKakaoSync = false;
+        addUpcomingEventDaysToKakao();
+      }
+    } else {
+      console.error('카카오 토큰 오류:', data);
+    }
+  })
+  .catch(e => console.error('카카오 토큰 요청 실패:', e));
+})();
+
+// 저장된 카카오 토큰 불러오기
+function loadKakaoToken(){
+  const saved = localStorage.getItem('kakao_token');
+  if(saved) kakaoAccessToken = saved;
+  return !!saved;
+}
+
+let pendingKakaoSync = false;
+
+function updateKakaoUI(connected){
+  const statusEl = document.getElementById('kakao-cal-status');
+  const dotEl = document.getElementById('kakao-status-dot');
+  const textEl = document.getElementById('kakao-status-text');
+  const btnTextEl = document.getElementById('kakao-cal-btn-text');
+  if(!statusEl) return;
+
+  if(connected){
+    statusEl.style.display = 'flex';
+    dotEl.className = 'k-dot';
+    textEl.textContent = '카카오 계정 연결됨 · 클릭하면 공대일 일정 추가';
+    btnTextEl.textContent = '📅 공대일 → 카카오 캘린더 동기화';
+  } else {
+    statusEl.style.display = 'flex';
+    dotEl.className = 'k-dot disconnected';
+    textEl.textContent = '카카오 로그인 후 공대일 일정을 자동으로 추가할 수 있어요';
+    btnTextEl.textContent = '카카오 캘린더에 공대일 추가하기';
+  }
+}
+
+function kakaoLogin(){
+  pendingKakaoSync = true;
+  const params = new URLSearchParams({
+    client_id: KAKAO_REST_API_KEY,
+    redirect_uri: KAKAO_REDIRECT_URI,
+    response_type: 'code',
+    scope: 'talk_calendar'
+  });
+  location.href = 'https://kauth.kakao.com/oauth/authorize?' + params.toString();
+}
+
+async function addEventToKakaoCalendar(y, m, d){
+  // m은 0-based이므로 +1해서 날짜 생성
+  const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  // 시작: 해당 날짜 00:00 KST = 전날 15:00 UTC
+  const startUTC = new Date(`${dateStr}T00:00:00+09:00`).toISOString().replace('.000','');
+  const endUTC = new Date(`${dateStr}T23:59:59+09:00`).toISOString().replace('.000','');
+
+  const eventBody = {
+    title: '📅 공대일',
+    time: {
+      start_at: startUTC,
+      end_at: endUTC,
+      time_zone: 'Asia/Seoul',
+      all_day: true,
+      lunar: false
+    },
+    description: '공대 캘린더에서 자동 등록된 공대일 일정입니다.',
+    color: 'GREEN',
+    reminders: [60]
+  };
+
+  const res = await fetch('https://kapi.kakao.com/v2/api/calendar/create/event', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${kakaoAccessToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: 'calendar_id=primary&event=' + encodeURIComponent(JSON.stringify(eventBody))
+  });
+
+  const data = await res.json();
+  if(res.status === 401){
+    // 토큰 만료 — 재로그인
+    localStorage.removeItem('kakao_token');
+    kakaoAccessToken = null;
+    return {ok: false, expired: true};
+  }
+  return {ok: !!data.event_id, event_id: data.event_id};
+}
+
+async function addUpcomingEventDaysToKakao(){
+  const upcoming = getUpcomingEventDays(0); // 제한 없이 전체 미래 공대일
+  if(upcoming.length === 0){
+    alert('추가할 공대일이 없어요.\n먼저 캘린더에서 공대일을 지정해주세요.');
+    return;
+  }
+
+  const btnText = document.getElementById('kakao-cal-btn-text');
+  if(btnText) btnText.textContent = `⏳ 추가 중... (0/${upcoming.length})`;
+
+  let success = 0, fail = 0;
+  for(let i = 0; i < upcoming.length; i++){
+    const {y, m, d} = upcoming[i];
+    const result = await addEventToKakaoCalendar(y, m, d);
+    if(result.expired){
+      // 토큰 만료 — 재로그인으로 리다이렉트
+      pendingKakaoSync = true;
+      kakaoLogin();
+      return;
+    }
+    if(result.ok) success++; else fail++;
+    if(btnText) btnText.textContent = `⏳ 추가 중... (${i+1}/${upcoming.length})`;
+  }
+
+  alert(`✅ 카카오 캘린더 추가 완료!\n성공: ${success}개${fail > 0 ? `\n실패: ${fail}개` : ''}`);
+  updateKakaoUI(true);
+}
+
+document.getElementById('kakao-cal-btn').onclick = async ()=>{
+  if(!kakaoAccessToken){
+    kakaoLogin();
+  } else {
+    await addUpcomingEventDaysToKakao();
+  }
+};
+
 const versionBadge = document.getElementById('version-badge');
 if(versionBadge) versionBadge.textContent = APP_VERSION;
 
