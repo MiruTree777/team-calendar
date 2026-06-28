@@ -177,6 +177,13 @@
   .notice-del{border:none;background:transparent;color:#9a988f;cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0;line-height:1}
   .notice-del:hover{color:#a32d2d}
   .notice-empty{font-size:12px;color:#9a988f;text-align:center;padding:12px 0}
+  /* 카카오 캘린더 연동 */
+  .kakao-cal-section{margin-bottom:10px}
+  .kakao-cal-btn{display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border:1px solid #FEE500;border-radius:8px;background:#FEE500;color:#191919;font-size:13px;font-weight:600;cursor:pointer}
+  .kakao-cal-btn:hover{background:#F5DC00}
+  .kakao-cal-status{font-size:12px;color:#6b6a64;margin-top:6px;display:flex;align-items:center;gap:6px}
+  .kakao-cal-status .k-dot{width:7px;height:7px;border-radius:50%;background:#97c459;flex-shrink:0}
+  .kakao-cal-status .k-dot.disconnected{background:#9a988f}
 </style>
 </head>
 <body>
@@ -213,6 +220,16 @@
     </div>
     <div class="sync-status" id="sync-status"><div class="sync-dot" id="sync-dot"></div><span id="sync-text">시트 미연결 — 이 브라우저에만 저장됩니다</span></div>
     <div class="upcoming-events" id="upcoming-events"></div>
+    <div class="kakao-cal-section" id="kakao-cal-section" style="display:none">
+      <button class="kakao-cal-btn" id="kakao-cal-btn">
+        <span>🗓</span>
+        <span id="kakao-cal-btn-text">카카오 캘린더에 공대일 추가하기</span>
+      </button>
+      <div class="kakao-cal-status" id="kakao-cal-status" style="display:none">
+        <div class="k-dot disconnected" id="kakao-status-dot"></div>
+        <span id="kakao-status-text"></span>
+      </div>
+    </div>
     <div class="multi-select-row" id="multi-select-row" style="display:none">
       <button class="multi-select-btn" id="multi-select-btn">☑ 여러 날짜 일괄 선택</button>
       <button class="multi-apply-btn" id="multi-apply-btn" style="display:none">✓ 0개 선택됨 · 적용하기</button>
@@ -837,6 +854,15 @@ function enterCalendar(idx, isAdmin){
   if(noticeForm) noticeForm.style.display = isAdmin ? 'none' : 'flex';
   const multiRow = document.getElementById('multi-select-row');
   if(multiRow) multiRow.style.display = isAdmin ? 'none' : 'flex';
+  // 카카오 캘린더 버튼 — 일반 멤버만 표시
+  const kakaoSection = document.getElementById('kakao-cal-section');
+  if(kakaoSection){
+    kakaoSection.style.display = isAdmin ? 'none' : 'block';
+    if(!isAdmin){
+      const connected = loadKakaoToken();
+      updateKakaoUI(connected);
+    }
+  }
   if(apiUrl) sheetGet(); else render();
 }
 
@@ -1011,7 +1037,158 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v1.9 · 2026-06-29';
+const APP_VERSION = 'v2.0 · 2026-06-29';
+
+// ── 카카오 톡캘린더 연동 (Apps Script 토큰 교환 방식) ──────────────
+const KAKAO_REST_API_KEY = 'f3fe8ee7b7bb7a903499fac54f0cb6ba';
+const KAKAO_REDIRECT_URI = 'https://mirutree777.github.io/team-calendar/';
+
+let kakaoAccessToken = null;
+
+// 페이지 로드 시 카카오 로그인 후 리다이렉트로 돌아온 경우 처리
+(function checkKakaoCallback(){
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code');
+  if(!code) return;
+
+  // URL 파라미터 정리
+  history.replaceState({}, '', location.origin + location.pathname);
+
+  if(!apiUrl){
+    alert('시트가 연결되지 않아 카카오 로그인을 처리할 수 없어요.\nAPI URL을 먼저 설정해주세요.');
+    return;
+  }
+
+  // Apps Script가 서버 역할로 카카오 토큰 교환을 대신 처리합니다
+  const tokenUrl = `${apiUrl}?action=kakaoToken&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(KAKAO_REDIRECT_URI)}`;
+
+  fetch(tokenUrl)
+    .then(r => r.json())
+    .then(data => {
+      if(data.access_token){
+        kakaoAccessToken = data.access_token;
+        localStorage.setItem('kakao_token', kakaoAccessToken);
+        updateKakaoUI(true);
+        // 로그인 직후 자동으로 공대일 추가 실행
+        addUpcomingEventDaysToKakao();
+      } else {
+        console.error('카카오 토큰 오류:', data);
+        alert('카카오 로그인 처리 중 오류가 발생했어요.\n다시 시도해주세요.');
+      }
+    })
+    .catch(e => {
+      console.error('토큰 교환 실패:', e);
+      alert('카카오 연동 중 오류가 발생했어요.\n다시 시도해주세요.');
+    });
+})();
+
+function loadKakaoToken(){
+  const saved = localStorage.getItem('kakao_token');
+  if(saved){ kakaoAccessToken = saved; return true; }
+  return false;
+}
+
+function updateKakaoUI(connected){
+  const statusEl = document.getElementById('kakao-cal-status');
+  const dotEl = document.getElementById('kakao-status-dot');
+  const textEl = document.getElementById('kakao-status-text');
+  const btnTextEl = document.getElementById('kakao-cal-btn-text');
+  if(!statusEl) return;
+  statusEl.style.display = 'flex';
+  if(connected){
+    dotEl.className = 'k-dot';
+    textEl.textContent = '카카오 계정 연결됨 · 클릭하면 공대일 일정 추가';
+    btnTextEl.textContent = '📅 공대일 → 카카오 캘린더 동기화';
+  } else {
+    dotEl.className = 'k-dot disconnected';
+    textEl.textContent = '카카오 로그인 후 공대일 일정을 자동으로 추가할 수 있어요';
+    btnTextEl.textContent = '🗓 카카오 캘린더에 공대일 추가하기';
+  }
+}
+
+function kakaoLogin(){
+  const url = `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_REST_API_KEY}&redirect_uri=${encodeURIComponent(KAKAO_REDIRECT_URI)}&response_type=code&scope=talk_calendar`;
+  location.href = url;
+}
+
+async function isAlreadyAdded(y, m, d){
+  const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const fromUTC = new Date(`${dateStr}T00:00:00+09:00`).toISOString().replace('.000','');
+  const toUTC   = new Date(`${dateStr}T23:59:59+09:00`).toISOString().replace('.000','');
+  const res = await fetch(
+    `https://kapi.kakao.com/v2/api/calendar/events?calendar_id=primary&from=${encodeURIComponent(fromUTC)}&to=${encodeURIComponent(toUTC)}&limit=50`,
+    { headers: { 'Authorization': `Bearer ${kakaoAccessToken}` } }
+  );
+  if(!res.ok) return false;
+  const data = await res.json();
+  return (data.events || []).some(ev => ev.title === '📅 공대일');
+}
+
+async function addEventToKakaoCalendar(y, m, d){
+  const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const startUTC = new Date(`${dateStr}T21:00:00+09:00`).toISOString().replace('.000','');
+  const endUTC   = new Date(`${dateStr}T23:00:00+09:00`).toISOString().replace('.000','');
+
+  const alreadyExists = await isAlreadyAdded(y, m, d);
+  if(alreadyExists) return {ok: true, skipped: true};
+
+  const eventBody = {
+    title: '📅 공대일',
+    time: { start_at: startUTC, end_at: endUTC, time_zone: 'Asia/Seoul', all_day: false, lunar: false },
+    description: '공대 캘린더에서 자동 등록된 공대일 일정입니다.',
+    color: 'GREEN',
+    reminders: [60]
+  };
+
+  const res = await fetch('https://kapi.kakao.com/v2/api/calendar/create/event', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${kakaoAccessToken}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'calendar_id=primary&event=' + encodeURIComponent(JSON.stringify(eventBody))
+  });
+
+  const data = await res.json();
+  if(res.status === 401){
+    localStorage.removeItem('kakao_token');
+    kakaoAccessToken = null;
+    return {ok: false, expired: true};
+  }
+  return {ok: !!data.event_id};
+}
+
+async function addUpcomingEventDaysToKakao(){
+  const upcoming = getUpcomingEventDays(0);
+  if(upcoming.length === 0){
+    alert('추가할 공대일이 없어요.\n먼저 캘린더에서 공대일을 지정해주세요.');
+    return;
+  }
+  const btnText = document.getElementById('kakao-cal-btn-text');
+  if(btnText) btnText.textContent = `⏳ 확인 중... (0/${upcoming.length})`;
+
+  let success = 0, fail = 0, skipped = 0;
+  for(let i = 0; i < upcoming.length; i++){
+    const {y, m, d} = upcoming[i];
+    const result = await addEventToKakaoCalendar(y, m, d);
+    if(result.expired){ kakaoLogin(); return; }
+    if(result.skipped) skipped++;
+    else if(result.ok) success++;
+    else fail++;
+    if(btnText) btnText.textContent = `⏳ 확인 중... (${i+1}/${upcoming.length})`;
+  }
+
+  const msg = [
+    '✅ 카카오 캘린더 동기화 완료!',
+    success > 0 ? `새로 추가: ${success}개` : '',
+    skipped > 0 ? `이미 있어서 건너뜀: ${skipped}개` : '',
+    fail > 0 ? `실패: ${fail}개` : ''
+  ].filter(Boolean).join('\n');
+  alert(msg);
+  updateKakaoUI(true);
+}
+
+document.getElementById('kakao-cal-btn').onclick = async ()=>{
+  if(!kakaoAccessToken){ kakaoLogin(); }
+  else { await addUpcomingEventDaysToKakao(); }
+};
 
 
 const versionBadge = document.getElementById('version-badge');
