@@ -222,7 +222,9 @@
     <div class="upcoming-events" id="upcoming-events"></div>
     <div class="kakao-cal-section" id="kakao-cal-section" style="display:none">
       <button class="kakao-cal-btn" id="kakao-cal-btn">
-        <span>🗓</span>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M9 1.5C4.86 1.5 1.5 4.19 1.5 7.5c0 2.07 1.26 3.9 3.18 5.01L3.75 16.5l3.93-2.58c.42.06.87.09 1.32.09 4.14 0 7.5-2.69 7.5-6S13.14 1.5 9 1.5z" fill="#191919"/>
+        </svg>
         <span id="kakao-cal-btn-text">카카오 캘린더에 공대일 추가하기</span>
       </button>
       <div class="kakao-cal-status" id="kakao-cal-status" style="display:none">
@@ -1037,7 +1039,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v2.0 · 2026-06-29';
+const APP_VERSION = 'v2.1 · 2026-06-29';
 
 // ── 카카오 톡캘린더 연동 (Apps Script 토큰 교환 방식) ──────────────
 const KAKAO_REST_API_KEY = 'f3fe8ee7b7bb7a903499fac54f0cb6ba';
