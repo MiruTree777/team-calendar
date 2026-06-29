@@ -75,17 +75,11 @@
   .upcoming-chip .ud-date{font-size:14px;font-weight:700}
   .upcoming-chip .ud-dday{font-size:11px;color:#3b6d11}
   .upcoming-empty{font-size:12px;color:#9a988f;padding:10px 0}
-  /* 월간 통계 */
-  .stats-section{margin-bottom:1rem}
-  .stats-title{font-size:12px;color:#6b6a64;font-weight:600;margin-bottom:6px}
-  .stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
-  .stats-card{background:#fff;border:1px solid #e5e3da;border-radius:10px;padding:8px 12px;font-size:11px;color:#6b6a64}
-  .stats-card .sc-name{font-weight:600;color:#2c2c2a;margin-bottom:3px}
-  .stats-card .sc-nums{display:flex;gap:8px}
-  .stats-card .sc-num{display:flex;flex-direction:column;align-items:center}
-  .stats-card .sc-val{font-size:15px;font-weight:700;color:#185fa5}
-  .stats-card .sc-label{font-size:10px;color:#9a988f}
-  .stats-summary{background:#e6f1fb;border:1px solid #b5d4f4;border-radius:10px;padding:8px 14px;font-size:12px;color:#185fa5;margin-bottom:6px;display:flex;gap:16px}
+  /* 누적 통계 */
+  .total-stats{display:flex;gap:10px;margin-bottom:1rem}
+  .total-stat-card{flex:1;background:#fff;border:1px solid #e5e3da;border-radius:10px;padding:10px 14px;text-align:center}
+  .total-stat-card .ts-val{font-size:22px;font-weight:700;color:#185fa5}
+  .total-stat-card .ts-label{font-size:11px;color:#9a988f;margin-top:2px}
 
   /* 캘린더 */
   .cal-table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e3da}
@@ -224,10 +218,15 @@
     </div>
     <div class="sync-status" id="sync-status"><div class="sync-dot" id="sync-dot"></div><span id="sync-text">시트 미연결 — 이 브라우저에만 저장됩니다</span></div>
     <div class="upcoming-events" id="upcoming-events"></div>
-    <div class="stats-section" id="stats-section" style="display:none">
-      <div class="stats-title">📊 이번 달 통계</div>
-      <div class="stats-summary" id="stats-summary"></div>
-      <div class="stats-grid" id="stats-grid"></div>
+    <div class="total-stats" id="total-stats" style="display:none">
+      <div class="total-stat-card">
+        <div class="ts-val" id="total-count">0</div>
+        <div class="ts-label">누적 공대 횟수</div>
+      </div>
+      <div class="total-stat-card">
+        <div class="ts-val" id="total-hours">0h</div>
+        <div class="ts-label">누적 총 시간</div>
+      </div>
     </div>
     <div class="multi-select-row" id="multi-select-row" style="display:none">
       <button class="multi-select-btn" id="multi-select-btn">☑ 여러 날짜 일괄 선택</button>
@@ -937,68 +936,35 @@ function renderUpcomingEvents(){
     <div class="upcoming-list">${chips}</div>`;
 }
 
-// ── 월간 통계 렌더 ──────────────────────────────────────────────
-// 현재 보고 있는 달의 공대일·멤버 참여 현황을 집계해서 화면에 표시합니다.
-// 공대 1회 = 3시간으로 계산합니다.
+// ── 누적 공대 통계 ──────────────────────────────────────────────
+// st.events에서 과거 공대일(오늘 이전 포함 전체)을 모두 집계해
+// 누적 횟수와 총 시간(1회 = 3시간)을 화면 상단에 표시합니다.
 const HOURS_PER_EVENT = 3;
 
 function renderMonthlyStats(){
-  const section = document.getElementById('stats-section');
-  const summaryEl = document.getElementById('stats-summary');
-  const gridEl = document.getElementById('stats-grid');
-  if(!section || !summaryEl || !gridEl) return;
+  const el = document.getElementById('total-stats');
+  if(!el) return;
 
-  // 관리자 모드거나 로그인 안 된 상태면 숨김
-  if(st.me === null || st.isAdmin){ section.style.display = 'none'; return; }
+  // 로그인 안 됐으면 숨김
+  if(st.me === null){ el.style.display = 'none'; return; }
 
-  const {year, month} = st;
-  const dim = new Date(year, month+1, 0).getDate();
+  const today = new Date();
+  today.setHours(0,0,0,0);
 
-  // 이번 달 공대일 목록 수집
-  const eventDays = [];
-  for(let d=1; d<=dim; d++){
-    if(st.events[`e:${year}-${month}-${d}`]) eventDays.push(d);
-  }
+  // st.events 전체에서 공대일(on 상태) 개수 집계
+  const totalCount = Object.keys(st.events).filter(k => {
+    if(!st.events[k]) return false;
+    // 키 형식: e:YYYY-M-D
+    const parts = k.slice(2).split('-');
+    const d = new Date(Number(parts[0]), Number(parts[1]), Number(parts[2]));
+    return d <= today; // 오늘 포함 과거만 집계
+  }).length;
 
-  if(eventDays.length === 0){
-    section.style.display = 'none';
-    return;
-  }
+  if(totalCount === 0){ el.style.display = 'none'; return; }
 
-  section.style.display = 'block';
-
-  // 제목 업데이트
-  section.querySelector('.stats-title').textContent =
-    `📊 ${month+1}월 통계`;
-
-  // 요약
-  const totalEvents = eventDays.length;
-  const totalHours = totalEvents * HOURS_PER_EVENT;
-  summaryEl.innerHTML =
-    `<span>공대 <b>${totalEvents}회</b></span>` +
-    `<span>총 <b>${totalHours}시간</b></span>`;
-
-  // 멤버별 집계
-  const cards = members.map((mem, idx) => {
-    let attended = 0;
-    eventDays.forEach(d => {
-      const s = getS(year, month, d, idx);
-      if(s === 'o' || s === 'tri') attended++;
-    });
-    const hours = attended * HOURS_PER_EVENT;
-    const rate = Math.round((attended / totalEvents) * 100);
-    const isMine = idx === st.me;
-    return `<div class="stats-card" style="${isMine ? 'border-color:#185fa5;' : ''}">
-      <div class="sc-name">${mem.name}${isMine ? ' 👤' : ''}</div>
-      <div class="sc-nums">
-        <div class="sc-num"><span class="sc-val">${attended}</span><span class="sc-label">회</span></div>
-        <div class="sc-num"><span class="sc-val">${hours}</span><span class="sc-label">시간</span></div>
-        <div class="sc-num"><span class="sc-val">${rate}%</span><span class="sc-label">참여율</span></div>
-      </div>
-    </div>`;
-  }).join('');
-
-  gridEl.innerHTML = cards;
+  el.style.display = 'flex';
+  document.getElementById('total-count').textContent = totalCount + '회';
+  document.getElementById('total-hours').textContent = (totalCount * HOURS_PER_EVENT) + 'h';
 }
 
 function render(){
@@ -1106,7 +1072,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v2.0 · 2026-06-29';
+const APP_VERSION = 'v2.1 · 2026-06-29';
 
 
 const versionBadge = document.getElementById('version-badge');
