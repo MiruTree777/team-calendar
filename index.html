@@ -626,13 +626,12 @@ document.getElementById('bulk-picker-save').onclick=async()=>{
   saveLocal();
   render();
 
-  // 시트에 순차 저장 후 최종 동기화
-  setSyncStatus('syncing', '저장 중...');
-  for(const key of dates){
+  // 배치로 한 번에 전송 (여러 날짜를 1번 왕복으로 처리)
+  const items = dates.map(key => {
     const [y,m,d] = key.split('-').map(Number);
-    await sheetSet(dkey(y,m,d,st.me), sel, note);
-  }
-  setSyncStatus('', '저장됨');
+    return { key: dkey(y,m,d,st.me), status: sel, note: note||'' };
+  });
+  await sheetSetBatch(items);
 };
 
 function loadSession(){
@@ -755,6 +754,26 @@ async function sheetSet(key,status,note){
   }
 }
 
+// 여러 항목을 한 번에 전송 — 일괄선택 등에 사용 (Apps Script 왕복 1회로 단축)
+async function sheetSetBatch(items){
+  if(!apiUrl || !items.length) return;
+  setSyncStatus('syncing','저장 중...');
+  try{
+    await fetch(apiUrl,{method:'POST',body:JSON.stringify({action:'setBatch',items}),headers:{'Content-Type':'text/plain'}});
+    setSyncStatus('','저장됨');
+  }catch(e){
+    setSyncStatus('err','저장 실패 — 로컬에만 저장됨');
+  }
+}
+
+// 개별 칩 저장 디바운싱 — 빠르게 연속 클릭 시 마지막 것만 전송 (300ms)
+let _sheetSetTimer = null;
+function sheetSetDebounced(key,status,note){
+  if(!apiUrl) return;
+  clearTimeout(_sheetSetTimer);
+  _sheetSetTimer = setTimeout(()=> sheetSet(key,status,note), 300);
+}
+
 function renderHint(){
   const el=document.getElementById('code-hint');
   let html='';
@@ -806,7 +825,7 @@ document.getElementById('picker-save').onclick=()=>{
   saveLocal();
   document.getElementById('picker-bg').classList.remove('open');
   render();
-  sheetSet(dkey(y,m,d,i),s,note);
+  sheetSetDebounced(dkey(y,m,d,i),s,note);
 };
 
 function openSettings(){
@@ -1076,7 +1095,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v2.6 · 2026-07-01';
+const APP_VERSION = 'v2.7 · 2026-07-01';
 
 
 const versionBadge = document.getElementById('version-badge');
