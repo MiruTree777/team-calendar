@@ -553,16 +553,28 @@ document.getElementById('cal-body').addEventListener('touchend', (ev)=>{
   const dx = Math.abs(touch.clientX - touchStartPoint.x);
   const dy = Math.abs(touch.clientY - touchStartPoint.y);
   touchStartPoint = null;
-  if(dx > TAP_MOVE_THRESHOLD || dy > TAP_MOVE_THRESHOLD) return; // 스크롤 의도로 판단, 무시
+  if(dx > TAP_MOVE_THRESHOLD || dy > TAP_MOVE_THRESHOLD) return;
 
-  // 터치를 뗀 "그 지점"을 기준으로 셀을 다시 판별합니다 (터치 시작 지점이 아님).
-  // 일괄 선택 모드 중에는 칩/메모점 같은 버튼 위를 눌러도 날짜 선택으로 처리합니다.
-  // (모바일에서는 칩이 작아서 정확히 빈 공간만 누르기 어렵기 때문입니다.)
   const el = document.elementFromPoint(touch.clientX, touch.clientY);
   const cell = el && el.closest('.day-cell[data-y]');
   if(!cell) return;
 
-  ev.preventDefault(); // 뒤따르는 합성 click을 막아 중복 처리 방지
+  // 선택된 날짜의 칩을 눌렀으면 팝업 오픈 (날짜 선택/해제 아님)
+  const isChip = el && el.closest('button.chip.mine');
+  if(isChip){
+    const y = Number(cell.getAttribute('data-y'));
+    const m = Number(cell.getAttribute('data-m'));
+    const d = Number(cell.getAttribute('data-d'));
+    const key = dateKeyStr(y,m,d);
+    if(multiSelect.selectedDates.has(key)){
+      ev.preventDefault();
+      lastTouchHandledAt = Date.now();
+      openBulkPicker();
+      return;
+    }
+  }
+
+  ev.preventDefault();
   lastTouchHandledAt = Date.now();
   toggleCellSelection(cell);
 }, {passive:false});
@@ -1104,7 +1116,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v2.9 · 2026-07-01';
+const APP_VERSION = 'v2.91 · 2026-07-01';
 
 
 const versionBadge = document.getElementById('version-badge');
