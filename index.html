@@ -639,6 +639,8 @@ document.getElementById('bulk-picker-save').onclick=()=>{
       }
     } finally {
       isSyncing = false;
+      // 모든 저장 완료 후 시트에서 최신 데이터 동기화
+      if(apiUrl) sheetGet();
     }
   })();
 };
@@ -1088,7 +1090,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v2.3 · 2026-07-01';
+const APP_VERSION = 'v2.4 · 2026-07-01';
 
 
 const versionBadge = document.getElementById('version-badge');
