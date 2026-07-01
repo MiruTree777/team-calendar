@@ -624,12 +624,14 @@ document.getElementById('bulk-picker-save').onclick=()=>{
   }
   saveLocal();
 
+  // isSyncing을 미리 true로 설정 — 화면 반영(render) 중 sheetGet이 덮어쓰는 것을 방지
+  isSyncing = true;
+
   // 화면 즉시 반영
   exitMultiSelectMode();
 
-  // 시트에는 백그라운드에서 순차 저장 (await 없이 비동기로)
+  // 시트에는 백그라운드에서 순차 저장
   (async()=>{
-    isSyncing = true;
     try {
       for(const key of dates){
         const [y,m,d] = key.split('-').map(Number);
@@ -754,15 +756,12 @@ async function sheetGet(){
 
 async function sheetSet(key,status,note){
   if(!apiUrl) return;
-  isSyncing = true;
   setSyncStatus('syncing','저장 중...');
   try{
     await fetch(apiUrl,{method:'POST',body:JSON.stringify({action:'set',key,status,note:note||''}),headers:{'Content-Type':'text/plain'}});
     setSyncStatus('','저장됨');
   }catch(e){
     setSyncStatus('err','저장 실패 — 로컬에만 저장됨');
-  } finally {
-    isSyncing = false;
   }
 }
 
@@ -817,7 +816,9 @@ document.getElementById('picker-save').onclick=()=>{
   saveLocal();
   document.getElementById('picker-bg').classList.remove('open');
   render();
-  sheetSet(dkey(y,m,d,i),s,note); // 백그라운드 저장 (await 제거)
+  // 백그라운드 저장 (isSyncing으로 sheetGet 차단)
+  isSyncing = true;
+  sheetSet(dkey(y,m,d,i),s,note).finally(()=>{ isSyncing = false; });
 };
 
 function openSettings(){
@@ -865,7 +866,9 @@ function enterCalendar(idx, isAdmin){
   if(noticeForm) noticeForm.style.display = isAdmin ? 'none' : 'flex';
   const multiRow = document.getElementById('multi-select-row');
   if(multiRow) multiRow.style.display = isAdmin ? 'none' : 'flex';
-  if(apiUrl) sheetGet(); else render();
+  // 로컬 캐시 데이터로 즉시 화면 표시 후, 백그라운드에서 시트 동기화
+  render();
+  if(apiUrl) sheetGet();
 }
 
 function doLogin(){
@@ -1085,7 +1088,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v2.2 · 2026-07-01';
+const APP_VERSION = 'v2.3 · 2026-07-01';
 
 
 const versionBadge = document.getElementById('version-badge');
