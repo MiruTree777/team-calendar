@@ -613,6 +613,7 @@ document.getElementById('bulk-picker-save').onclick=async()=>{
   const sel = multiSelect.bulkSel || 'none';
   const note = sel==='tri' ? document.getElementById('bulk-picker-note').value : '';
   const dates = Array.from(multiSelect.selectedDates);
+  console.log('[DEBUG] bulk save - bulkSel:', multiSelect.bulkSel, '/ sel:', sel, '/ dates:', dates, '/ me:', st.me);
 
   document.getElementById('bulk-picker-bg').classList.remove('open');
   exitMultiSelectMode();
