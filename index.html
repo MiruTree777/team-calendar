@@ -182,9 +182,18 @@
   .notice-del{border:none;background:transparent;color:#9a988f;cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0;line-height:1}
   .notice-del:hover{color:#a32d2d}
   .notice-empty{font-size:12px;color:#9a988f;text-align:center;padding:12px 0}
+  /* Pull to Refresh */
+  .ptr-indicator{position:fixed;top:0;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e5e3da;border-radius:20px;padding:6px 14px;font-size:12px;color:#6b6a64;box-shadow:0 2px 8px rgba(0,0,0,0.1);opacity:0;transition:opacity 0.2s;pointer-events:none;z-index:999}
+  .ptr-indicator.visible{opacity:1}
+  .ptr-spinner{width:14px;height:14px;border:2px solid #d8d6cc;border-top-color:#185fa5;border-radius:50%;animation:ptr-spin 0.6s linear infinite}
+  @keyframes ptr-spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
+<div class="ptr-indicator" id="ptr-indicator">
+  <div class="ptr-spinner" id="ptr-spinner" style="display:none"></div>
+  <span id="ptr-text">↓ 당겨서 새로고침</span>
+</div>
 <div class="app">
   <h1>📅 8인 공유 캘린더</h1>
 
@@ -1116,7 +1125,87 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v2.91 · 2026-07-01';
+const APP_VERSION = 'v3.0 · 2026-07-01';
+
+// ── Pull to Refresh ──────────────────────────────────────────────
+// 화면 맨 위에서 아래로 당기면 sheetGet()을 호출해 최신 데이터를 받아옵니다.
+// 모바일 전용 (PC에서는 touchstart가 발생하지 않아 자동으로 비활성화됩니다.)
+(function initPullToRefresh(){
+  const PTR_THRESHOLD = 80;   // 이 픽셀 이상 당겨야 새로고침 트리거
+  const PTR_MAX      = 120;   // 최대 당김 거리
+
+  let ptrStartY   = 0;
+  let ptrDistance = 0;
+  let ptrActive   = false;
+  let ptrRefreshing = false;
+
+  const indicator = document.getElementById('ptr-indicator');
+  const spinner   = document.getElementById('ptr-spinner');
+  const ptrText   = document.getElementById('ptr-text');
+
+  function showIndicator(dist){
+    const ratio = Math.min(dist / PTR_THRESHOLD, 1);
+    indicator.classList.add('visible');
+    indicator.style.top = Math.min(dist * 0.4, 40) + 'px';
+    if(dist >= PTR_THRESHOLD){
+      ptrText.textContent = '↑ 놓으면 새로고침';
+    } else {
+      ptrText.textContent = '↓ 당겨서 새로고침';
+    }
+    spinner.style.display = 'none';
+  }
+
+  function hideIndicator(){
+    indicator.classList.remove('visible');
+    indicator.style.top = '0';
+  }
+
+  async function doRefresh(){
+    ptrRefreshing = true;
+    indicator.classList.add('visible');
+    indicator.style.top = '16px';
+    spinner.style.display = 'block';
+    ptrText.textContent = '새로고침 중...';
+
+    if(apiUrl) await sheetGet();
+    else render();
+
+    setTimeout(()=>{
+      hideIndicator();
+      spinner.style.display = 'none';
+      ptrRefreshing = false;
+    }, 400);
+  }
+
+  document.addEventListener('touchstart', (ev)=>{
+    if(ptrRefreshing) return;
+    // 스크롤이 맨 위일 때만 활성화
+    if(window.scrollY > 0) return;
+    ptrStartY = ev.touches[0].clientY;
+    ptrActive = true;
+  }, {passive:true});
+
+  document.addEventListener('touchmove', (ev)=>{
+    if(!ptrActive || ptrRefreshing) return;
+    if(window.scrollY > 0){ ptrActive = false; hideIndicator(); return; }
+    ptrDistance = ev.touches[0].clientY - ptrStartY;
+    if(ptrDistance < 0){ ptrActive = false; hideIndicator(); return; }
+    ptrDistance = Math.min(ptrDistance, PTR_MAX);
+    if(ptrDistance > 10) showIndicator(ptrDistance);
+  }, {passive:true});
+
+  document.addEventListener('touchend', ()=>{
+    if(!ptrActive || ptrRefreshing) return;
+    ptrActive = false;
+    if(ptrDistance >= PTR_THRESHOLD){
+      doRefresh();
+    } else {
+      hideIndicator();
+    }
+    ptrDistance = 0;
+  });
+})();
+
 
 
 const versionBadge = document.getElementById('version-badge');
