@@ -336,6 +336,15 @@
     <div class="sub">이름과 코드를 수정한 뒤 저장하세요.</div>
     <div class="member-rows" id="member-rows"></div>
     <div class="settings-note">
+      <b>공대 1회당 시간</b> — 누적 시간 계산 기준
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <input id="hours-per-event-input" type="number" min="0.5" max="24" step="0.5"
+          style="width:80px;padding:6px 10px;border:1px solid #d8d6cc;border-radius:8px;font-size:14px"
+          placeholder="2"/>
+        <span style="font-size:13px;color:#6b6a64">시간</span>
+      </div>
+    </div>
+    <div class="settings-note">
       <b>구글 시트 API URL</b> — 연결하면 모두가 같은 데이터를 실시간으로 공유해요
       <input id="api-url-input" placeholder="https://script.google.com/macros/s/...AKfy.../exec"/>
     </div>
@@ -356,7 +365,7 @@ window.addEventListener('pageshow', function(event){
 });
 
 const DEFAULT_MEMBERS=[
-  {name:'필로시코스',code:'1111'},{name:'똥싸개',code:'2222'},{name:'세일룬',code:'3333'},{name:'마시로토모야',code:'4444'},
+  {name:'필로시코스',code:'1111'},{name:'똥싸개',code:'2222'},{name:'룬룬',code:'3333'},{name:'마시로토모야',code:'4444'},
   {name:'미루나무',code:'5555'},{name:'파피용',code:'6666'},{name:'김활명',code:'7777'},{name:'신희',code:'8888'}
 ];
 // 관리자 코드 — 이 코드를 아는 사람만 멤버 설정에 접근할 수 있어요.
@@ -862,6 +871,7 @@ function openSettings(){
     rows.appendChild(div);
   });
   document.getElementById('api-url-input').value=apiUrl;
+  document.getElementById('hours-per-event-input').value=HOURS_PER_EVENT;
   document.getElementById('settings-bg').classList.add('open');
 }
 document.getElementById('settings-btn').onclick=openSettings;
@@ -872,6 +882,12 @@ document.getElementById('settings-save').onclick=()=>{
     const i=parseInt(inp.dataset.idx),f=inp.dataset.field;
     members[i][f]=inp.value.trim()||members[i][f];
   });
+  // 공대 1회당 시간 저장
+  const newHours = parseFloat(document.getElementById('hours-per-event-input').value);
+  if(!isNaN(newHours) && newHours > 0){
+    HOURS_PER_EVENT = newHours;
+    localStorage.setItem('hours_per_event', newHours);
+  }
   const newUrl=document.getElementById('api-url-input').value.trim();
   const urlChanged = newUrl !== apiUrl;
   apiUrl=newUrl;
@@ -983,7 +999,8 @@ function renderUpcomingEvents(){
 // ── 누적 공대 통계 ──────────────────────────────────────────────
 // st.events에서 과거 공대일(오늘 이전 포함 전체)을 모두 집계해
 // 누적 횟수와 총 시간(1회 = 3시간)을 화면 상단에 표시합니다.
-const HOURS_PER_EVENT = 3;
+const HOURS_PER_EVENT_DEFAULT = 2;
+let HOURS_PER_EVENT = Number(localStorage.getItem('hours_per_event')) || HOURS_PER_EVENT_DEFAULT;
 
 function renderMonthlyStats(){
   const el = document.getElementById('total-stats');
@@ -1125,7 +1142,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v3.0 · 2026-07-01';
+const APP_VERSION = 'v3.1 · 2026-07-01';
 
 // ── Pull to Refresh ──────────────────────────────────────────────
 // 화면 맨 위에서 아래로 당기면 sheetGet()을 호출해 최신 데이터를 받아옵니다.
