@@ -686,6 +686,14 @@ const BUILT_IN_API_URL = 'https://script.google.com/macros/s/AKfycbxkrbLnfuIeKOD
 
 let saved=loadLocal();
 let members = saved && saved.members ? saved.members : [...DEFAULT_MEMBERS];
+
+// DEFAULT_MEMBERS 이름이 바뀌면 자동으로 반영 (코드는 사용자 설정 유지)
+// 예: 세일룬 → 룬룬처럼 기본값 이름이 바뀐 경우 localStorage를 자동 업데이트
+DEFAULT_MEMBERS.forEach((def, i) => {
+  if(members[i] && members[i].code === def.code && members[i].name !== def.name){
+    members[i].name = def.name;
+  }
+});
 let apiUrl = (saved && saved.apiUrl) ? saved.apiUrl : BUILT_IN_API_URL;
 let st={
   year:new Date().getFullYear(),
