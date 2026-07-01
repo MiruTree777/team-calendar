@@ -608,7 +608,7 @@ document.getElementById('bulk-picker-bg').onclick=(e)=>{
     render();
   }
 };
-document.getElementById('bulk-picker-save').onclick=async()=>{
+document.getElementById('bulk-picker-save').onclick=()=>{
   if(st.me===null || st.me===undefined) return;
   const sel = multiSelect.bulkSel || 'none';
   const note = sel==='tri' ? document.getElementById('bulk-picker-note').value : '';
@@ -624,17 +624,21 @@ document.getElementById('bulk-picker-save').onclick=async()=>{
   }
   saveLocal();
 
-  // 일괄 선택 모드 종료 + 화면 반영
+  // 화면 즉시 반영
   exitMultiSelectMode();
 
-  // 시트에 순차 저장
-  for(const key of dates){
-    const [y,m,d] = key.split('-').map(Number);
-    await sheetSet(dkey(y,m,d,st.me), sel, note);
-  }
-
-  // 모든 저장 완료 후 시트에서 다시 불러와 최종 동기화
-  if(apiUrl) sheetGet();
+  // 시트에는 백그라운드에서 순차 저장 (await 없이 비동기로)
+  (async()=>{
+    isSyncing = true;
+    try {
+      for(const key of dates){
+        const [y,m,d] = key.split('-').map(Number);
+        await sheetSet(dkey(y,m,d,st.me), sel, note);
+      }
+    } finally {
+      isSyncing = false;
+    }
+  })();
 };
 
 function loadSession(){
@@ -671,6 +675,7 @@ let st={
   notices: saved && saved.notices ? saved.notices : []
 };
 let pickerTarget=null,pickerSel=null;
+let isSyncing = false; // 시트 저장 중일 때 true — sheetGet이 덮어쓰는 걸 방지
 
 // ── 일괄 선택 모드 상태 (버튼으로 켜고 끄는 방식) ──
 let multiSelect = {
@@ -704,6 +709,7 @@ function setSyncStatus(state,msg){
 }
 
 async function sheetGet(){
+  if(isSyncing) return; // 저장 중이면 덮어쓰기 방지
   if(!apiUrl){ setSyncStatus('','시트 미연결 — 이 브라우저에만 저장됩니다'); return; }
   setSyncStatus('syncing','시트에서 불러오는 중...');
   try{
@@ -748,12 +754,15 @@ async function sheetGet(){
 
 async function sheetSet(key,status,note){
   if(!apiUrl) return;
+  isSyncing = true;
   setSyncStatus('syncing','저장 중...');
   try{
     await fetch(apiUrl,{method:'POST',body:JSON.stringify({action:'set',key,status,note:note||''}),headers:{'Content-Type':'text/plain'}});
     setSyncStatus('','저장됨');
   }catch(e){
     setSyncStatus('err','저장 실패 — 로컬에만 저장됨');
+  } finally {
+    isSyncing = false;
   }
 }
 
@@ -799,7 +808,7 @@ function updatePickerUI(){
 document.querySelectorAll('.popt').forEach(b=>{b.onclick=()=>{pickerSel=b.dataset.val;updatePickerUI();}});
 document.getElementById('picker-cancel').onclick=()=>{document.getElementById('picker-bg').classList.remove('open');};
 document.getElementById('picker-bg').onclick=(e)=>{if(e.target===e.currentTarget)document.getElementById('picker-bg').classList.remove('open');};
-document.getElementById('picker-save').onclick=async()=>{
+document.getElementById('picker-save').onclick=()=>{
   if(!pickerTarget)return;
   const{y,m,d,i}=pickerTarget;
   const s=pickerSel||'none';
@@ -808,7 +817,7 @@ document.getElementById('picker-save').onclick=async()=>{
   saveLocal();
   document.getElementById('picker-bg').classList.remove('open');
   render();
-  await sheetSet(dkey(y,m,d,i),s,note);
+  sheetSet(dkey(y,m,d,i),s,note); // 백그라운드 저장 (await 제거)
 };
 
 function openSettings(){
@@ -1076,7 +1085,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v2.1 · 2026-06-29';
+const APP_VERSION = 'v2.2 · 2026-07-01';
 
 
 const versionBadge = document.getElementById('version-badge');
