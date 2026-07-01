@@ -609,13 +609,14 @@ document.getElementById('bulk-picker-bg').onclick=(e)=>{
   }
 };
 document.getElementById('bulk-picker-save').onclick=async()=>{
-  if(st.me===null || st.me===undefined) return; // 관리자는 멤버 응답 입력 대상이 아님
+  if(st.me===null || st.me===undefined) return;
   const sel = multiSelect.bulkSel || 'none';
   const note = sel==='tri' ? document.getElementById('bulk-picker-note').value : '';
   const dates = Array.from(multiSelect.selectedDates);
 
   document.getElementById('bulk-picker-bg').classList.remove('open');
 
+  // 로컬에 먼저 반영
   for(const key of dates){
     const [y,m,d] = key.split('-').map(Number);
     setS(y,m,d,st.me,sel);
@@ -623,14 +624,17 @@ document.getElementById('bulk-picker-save').onclick=async()=>{
   }
   saveLocal();
 
-  // 적용이 끝났으니 일괄 선택 모드를 종료합니다.
+  // 일괄 선택 모드 종료 + 화면 반영
   exitMultiSelectMode();
 
-  // 시트에는 순차적으로 저장 (여러 날짜를 한 번에 보내는 API가 없으므로 하나씩 호출)
+  // 시트에 순차 저장
   for(const key of dates){
     const [y,m,d] = key.split('-').map(Number);
     await sheetSet(dkey(y,m,d,st.me), sel, note);
   }
+
+  // 모든 저장 완료 후 시트에서 다시 불러와 최종 동기화
+  if(apiUrl) sheetGet();
 };
 
 function loadSession(){
