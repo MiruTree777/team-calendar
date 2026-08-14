@@ -104,7 +104,8 @@
   .multi-select-btn.active{background:#f5f4f0;color:#2c2c2a;border-color:#a32d2d;color:#a32d2d}
   .multi-apply-btn{flex:1;padding:10px;border:1px solid #185fa5;border-radius:8px;background:#185fa5;color:#fff;font-size:13px;font-weight:600;cursor:pointer}
   .multi-apply-btn:hover{background:#0c447c}
-  .event-badge{font-size:10px;color:#27500a;font-weight:700;margin-bottom:3px;background:#c0dd97;border-radius:4px;padding:1px 5px;display:inline-block}
+  .event-badge{font-size:10px;color:#27500a;font-weight:700;margin-bottom:1px;background:#c0dd97;border-radius:4px;padding:1px 5px;display:inline-block}
+  .event-time{font-size:9px;color:#3b6d11;font-weight:600;margin-bottom:2px;display:block;line-height:1.2}
   .dnum{font-size:12px;color:#2c2c2a;margin-bottom:3px;height:22px;display:flex;align-items:center}
   .dnum.sun{color:#e24b4a}
   .dnum.sat{color:#378add}
@@ -1209,9 +1210,15 @@ function render(){
         if(dayIsEvent){
           const eb=document.createElement('div');
           eb.className='event-badge';
-          const timeRange = getEventTime(year,month,d);
-          eb.textContent = timeRange ? `공대일 ${timeRange}` : '공대일';
+          eb.textContent='공대일';
           td.appendChild(eb);
+          const timeRange = getEventTime(year,month,d);
+          if(timeRange){
+            const et=document.createElement('span');
+            et.className='event-time';
+            et.textContent=timeRange;
+            td.appendChild(et);
+          }
         }
         if(isBlocked(year,month,d)){const bb=document.createElement('div');bb.className='block-badge';bb.textContent='✕ 불가';td.appendChild(bb);}
         const slots=document.createElement('div');slots.className='slots';
@@ -1273,7 +1280,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v3.3 · 2026-07-19';
+const APP_VERSION = 'v3.31 · 2026-08-14';
 
 // ── Pull to Refresh ──────────────────────────────────────────────
 // 화면 맨 위에서 아래로 당기면 sheetGet()을 호출해 최신 데이터를 받아옵니다.
