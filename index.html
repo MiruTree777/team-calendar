@@ -273,6 +273,25 @@
   </div>
 </div>
 
+<!-- 공대일 시간 입력 팝업 (관리자 전용) -->
+<div class="modal-bg" id="event-time-bg">
+  <div class="modal">
+    <div class="picker-date" id="event-time-date"></div>
+    <div style="margin:16px 0 8px;font-size:13px;color:#6b6a64">공대 시작~종료 시간을 입력해주세요</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <input id="event-start-time" type="time" value="21:00"
+        style="flex:1;padding:8px 10px;border:1px solid #d8d6cc;border-radius:8px;font-size:15px"/>
+      <span style="color:#9a988f">~</span>
+      <input id="event-end-time" type="time" value="23:00"
+        style="flex:1;padding:8px 10px;border:1px solid #d8d6cc;border-radius:8px;font-size:15px"/>
+    </div>
+    <div class="modal-actions">
+      <button id="event-time-cancel">취소 (공대일 해제)</button>
+      <button class="btn-save" id="event-time-save">공대일 지정</button>
+    </div>
+  </div>
+</div>
+
 <!-- 상태 선택 팝업 -->
 <div class="modal-bg" id="picker-bg">
   <div class="modal">
@@ -389,8 +408,33 @@ function saveLocal(){
 }
 function ekey(y,m,d){return`e:${y}-${m}-${d}`}
 function isEventDay(y,m,d){return !!st.events[ekey(y,m,d)]}
-function setEventDay(y,m,d,on){
-  if(on) st.events[ekey(y,m,d)]=true;
+
+// st.events[key] 값 형식:
+// "21:00~23:00" — 시작~종료 시간 (신규)
+// 숫자 — 시간 수 (구버전 on|숫자)
+// true — 구버전 on
+function getEventTime(y,m,d){
+  const v = st.events[ekey(y,m,d)];
+  if(!v) return null;
+  if(typeof v === 'string' && v.includes('~')) return v; // "21:00~23:00"
+  return null;
+}
+function getEventHours(y,m,d){
+  const v = st.events[ekey(y,m,d)];
+  if(!v) return 0;
+  if(typeof v === 'string' && v.includes('~')){
+    // "21:00~23:00" → 시간 계산
+    const [start, end] = v.split('~');
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    return Math.max(0, (eh * 60 + em - sh * 60 - sm) / 60);
+  }
+  if(typeof v === 'number') return v; // 구버전
+  return HOURS_PER_EVENT; // true (구버전)
+}
+function setEventDay(y,m,d,timeRange){
+  // timeRange: "21:00~23:00" 또는 false(해제)
+  if(timeRange) st.events[ekey(y,m,d)] = timeRange;
   else delete st.events[ekey(y,m,d)];
 }
 
@@ -723,13 +767,73 @@ function getN(y,m,d,i){return st.notes[nkey(y,m,d,i)]||''}
 function setN(y,m,d,i,n){st.notes[nkey(y,m,d,i)]=n}
 function isBlocked(y,m,d){return members.some((_,i)=>getS(y,m,d,i)==='x')}
 
-async function toggleEventDay(y,m,d){
+// 공대일 팝업 관련 상태
+let eventTimeTarget = null;
+
+function openEventTimePopup(y,m,d){
   if(!st.isAdmin) return;
-  const next = !isEventDay(y,m,d);
-  setEventDay(y,m,d,next);
+  eventTimeTarget = {y,m,d};
+  const WEEKDAY_KR = ['일','월','화','수','목','금','토'];
+  const dateObj = new Date(y, m, d);
+  const wd = WEEKDAY_KR[dateObj.getDay()];
+  document.getElementById('event-time-date').textContent = `${m+1}월 ${d}일 (${wd})`;
+
+  // 기존 시간이 있으면 채워줌
+  const existing = getEventTime(y,m,d);
+  if(existing && existing.includes('~')){
+    const [s, e] = existing.split('~');
+    document.getElementById('event-start-time').value = s;
+    document.getElementById('event-end-time').value = e;
+  } else {
+    document.getElementById('event-start-time').value = '21:00';
+    document.getElementById('event-end-time').value = '23:00';
+  }
+
+  document.getElementById('event-time-bg').classList.add('open');
+}
+
+// 공대일 해제
+document.getElementById('event-time-cancel').onclick = async ()=>{
+  document.getElementById('event-time-bg').classList.remove('open');
+  if(!eventTimeTarget) return;
+  const {y,m,d} = eventTimeTarget;
+  setEventDay(y,m,d,false);
   saveLocal();
   render();
-  await sheetSet(ekey(y,m,d), next ? 'on' : 'off', '');
+  await sheetSet(ekey(y,m,d), 'off', '');
+  eventTimeTarget = null;
+};
+
+document.getElementById('event-time-bg').onclick=(e)=>{
+  if(e.target===e.currentTarget) document.getElementById('event-time-bg').classList.remove('open');
+};
+
+// 공대일 지정
+document.getElementById('event-time-save').onclick = async ()=>{
+  if(!eventTimeTarget) return;
+  const {y,m,d} = eventTimeTarget;
+  const start = document.getElementById('event-start-time').value;
+  const end = document.getElementById('event-end-time').value;
+  if(!start || !end){ alert('시작/종료 시간을 입력해주세요'); return; }
+
+  const timeRange = `${start}~${end}`;
+  document.getElementById('event-time-bg').classList.remove('open');
+  setEventDay(y,m,d,timeRange);
+  saveLocal();
+  render();
+  await sheetSet(ekey(y,m,d), `on|${timeRange}`, '');
+  eventTimeTarget = null;
+};
+
+async function toggleEventDay(y,m,d){
+  if(!st.isAdmin) return;
+  if(isEventDay(y,m,d)){
+    // 이미 공대일 → 팝업으로 해제하거나 시간 수정
+    openEventTimePopup(y,m,d);
+  } else {
+    // 공대일 아님 → 팝업 열어서 시간 입력
+    openEventTimePopup(y,m,d);
+  }
 }
 
 function setSyncStatus(state,msg){
@@ -750,7 +854,16 @@ async function sheetGet(){
       json.data.forEach(row=>{
         if(!row.key) return;
         if(row.key.startsWith('e:')){
-          if(row.status==='on') st.events[row.key]=true;
+          if(row.status && row.status.startsWith('on')){
+            const parts = row.status.split('|');
+            if(parts.length > 1){
+              const val = parts[1];
+              // "21:00~23:00" 형식이면 그대로, 숫자면 숫자로
+              st.events[row.key] = val.includes('~') ? val : (parseFloat(val) || HOURS_PER_EVENT);
+            } else {
+              st.events[row.key] = HOURS_PER_EVENT; // 구버전 "on"
+            }
+          }
           return;
         }
         if(row.key.startsWith('notice:')){
@@ -996,7 +1109,7 @@ function renderUpcomingEvents(){
     const wd = WEEKDAY_KR[item.date.getDay()];
     return `<div class="upcoming-chip">
         <div class="ud-date">${item.m+1}월 ${item.d}일 (${wd})</div>
-        <div class="ud-dday">${ddayLabel}</div>
+        <div class="ud-dday">${ddayLabel}${getEventTime(item.y,item.m,item.d) ? ' · '+getEventTime(item.y,item.m,item.d) : ''}</div>
       </div>`;
   }).join('');
 
@@ -1020,20 +1133,24 @@ function renderMonthlyStats(){
   const today = new Date();
   today.setHours(0,0,0,0);
 
-  // st.events 전체에서 공대일(on 상태) 개수 집계
-  const totalCount = Object.keys(st.events).filter(k => {
-    if(!st.events[k]) return false;
-    // 키 형식: e:YYYY-M-D
+  // st.events 전체에서 공대일(on 상태) 개수 및 시간 집계
+  let totalCount = 0;
+  let totalHours = 0;
+  Object.keys(st.events).forEach(k => {
+    if(!st.events[k]) return;
     const parts = k.slice(2).split('-');
     const d = new Date(Number(parts[0]), Number(parts[1]), Number(parts[2]));
-    return d <= today; // 오늘 포함 과거만 집계
-  }).length;
+    if(d <= today){
+      totalCount++;
+      totalHours += typeof st.events[k] === 'number' ? st.events[k] : HOURS_PER_EVENT;
+    }
+  });
 
   if(totalCount === 0){ el.style.display = 'none'; return; }
 
   el.style.display = 'flex';
   document.getElementById('total-count').textContent = totalCount + '회';
-  document.getElementById('total-hours').textContent = (totalCount * HOURS_PER_EVENT) + 'h';
+  document.getElementById('total-hours').textContent = totalHours + 'h';
 }
 
 function render(){
@@ -1089,7 +1206,13 @@ function render(){
         const dn=document.createElement('div');
         dn.className='dnum'+(col===0?' sun':col===6?' sat':'');
         const dni=document.createElement('span');dni.className='dnum-inner';dni.textContent=d;dn.appendChild(dni);td.appendChild(dn);
-        if(dayIsEvent){const eb=document.createElement('div');eb.className='event-badge';eb.textContent='공대일';td.appendChild(eb);}
+        if(dayIsEvent){
+          const eb=document.createElement('div');
+          eb.className='event-badge';
+          const timeRange = getEventTime(year,month,d);
+          eb.textContent = timeRange ? `공대일 ${timeRange}` : '공대일';
+          td.appendChild(eb);
+        }
         if(isBlocked(year,month,d)){const bb=document.createElement('div');bb.className='block-badge';bb.textContent='✕ 불가';td.appendChild(bb);}
         const slots=document.createElement('div');slots.className='slots';
         const isPastMonth = (year < todayD_year) ||
@@ -1150,7 +1273,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v3.1 · 2026-07-01';
+const APP_VERSION = 'v3.3 · 2026-07-19';
 
 // ── Pull to Refresh ──────────────────────────────────────────────
 // 화면 맨 위에서 아래로 당기면 sheetGet()을 호출해 최신 데이터를 받아옵니다.
