@@ -420,6 +420,17 @@ function getEventTime(y,m,d){
   if(typeof v === 'string' && v.includes('~')) return v; // "21:00~23:00"
   return null;
 }
+
+// "21:00~23:00" → "21~23시", "21:30~23:00" → "21:30~23시" 형식으로 변환
+function formatEventTime(timeRange){
+  if(!timeRange || !timeRange.includes('~')) return timeRange;
+  const [start, end] = timeRange.split('~');
+  const fmt = (t) => {
+    const [h, m] = t.split(':');
+    return m === '00' ? h : `${h}:${m}`;
+  };
+  return `${fmt(start)}~${fmt(end)}시`;
+}
 function getEventHours(y,m,d){
   const v = st.events[ekey(y,m,d)];
   if(!v) return 0;
@@ -1216,7 +1227,7 @@ function render(){
           if(timeRange){
             const et=document.createElement('span');
             et.className='event-time';
-            et.textContent=timeRange;
+            et.textContent=formatEventTime(timeRange);
             td.appendChild(et);
           }
         }
@@ -1280,7 +1291,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v3.31 · 2026-08-14';
+const APP_VERSION = 'v3.33 · 2026-08-14';
 
 // ── Pull to Refresh ──────────────────────────────────────────────
 // 화면 맨 위에서 아래로 당기면 sheetGet()을 호출해 최신 데이터를 받아옵니다.
