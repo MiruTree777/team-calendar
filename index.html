@@ -1051,6 +1051,8 @@ function enterCalendar(idx, isAdmin){
   // 로컬 캐시 데이터로 즉시 화면 표시 후, 백그라운드에서 시트 동기화
   render();
   if(apiUrl) sheetGet();
+  // 푸시 알림 구독 (백그라운드)
+  setTimeout(initPushNotification, 2000);
 }
 
 function doLogin(){
@@ -1296,7 +1298,67 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v3.41 · 2026-08-20';
+const APP_VERSION = 'v3.5 · 2026-08-20';
+
+// ── 웹 푸시 구독 ──────────────────────────────────────────────
+const PUSH_WORKER_URL = 'https://aging-curve-push.anna981201.workers.dev';
+
+async function initPushNotification(){
+  if(!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+  // Service Worker 등록
+  let reg;
+  try {
+    reg = await navigator.serviceWorker.register('/team-calendar/sw.js');
+  } catch(e) {
+    console.warn('SW 등록 실패:', e);
+    return;
+  }
+
+  // 이미 구독되어 있으면 스킵
+  const existing = await reg.pushManager.getSubscription();
+  if(existing) return;
+
+  // 알림 권한 요청
+  const permission = await Notification.requestPermission();
+  if(permission !== 'granted') return;
+
+  // VAPID 공개키 가져오기
+  let vapidKey;
+  try {
+    const res = await fetch(`${PUSH_WORKER_URL}/vapid-public-key`);
+    const data = await res.json();
+    vapidKey = data.key;
+  } catch(e) {
+    console.warn('VAPID 키 가져오기 실패:', e);
+    return;
+  }
+
+  // 구독
+  try {
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidKey),
+    });
+
+    // Workers에 구독 정보 저장
+    await fetch(`${PUSH_WORKER_URL}/subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sub.toJSON()),
+    });
+    console.log('푸시 알림 구독 완료!');
+  } catch(e) {
+    console.warn('구독 실패:', e);
+  }
+}
+
+function urlBase64ToUint8Array(base64String){
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return new Uint8Array([...rawData].map(c => c.charCodeAt(0)));
+}
 
 // ── Pull to Refresh ──────────────────────────────────────────────
 // 화면 맨 위에서 아래로 당기면 sheetGet()을 호출해 최신 데이터를 받아옵니다.
