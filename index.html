@@ -763,9 +763,13 @@ DEFAULT_MEMBERS.forEach((def, i) => {
   }
 });
 let apiUrl = (saved && saved.apiUrl) ? saved.apiUrl : BUILT_IN_API_URL;
+// 마지막으로 보던 달 복원 (없으면 오늘 달)
+const savedView = (() => {
+  try { return JSON.parse(localStorage.getItem('last_view') || 'null'); } catch(e) { return null; }
+})();
 let st={
-  year:new Date().getFullYear(),
-  month:new Date().getMonth(),
+  year: savedView ? savedView.year : new Date().getFullYear(),
+  month: savedView ? savedView.month : new Date().getMonth(),
   me:null,
   isAdmin:false,
   data: saved && saved.data ? saved.data : {},
@@ -773,6 +777,7 @@ let st={
   events: saved && saved.events ? saved.events : {},
   notices: saved && saved.notices ? saved.notices : []
 };
+function saveView(){ try{ localStorage.setItem('last_view', JSON.stringify({year:st.year, month:st.month})); }catch(e){} }
 let pickerTarget=null,pickerSel=null;
 
 // ── 일괄 선택 모드 상태 (버튼으로 켜고 끄는 방식) ──
@@ -1089,8 +1094,8 @@ document.getElementById('logout-btn').onclick=()=>{
   document.getElementById('login-screen').style.display='block';
   document.getElementById('code-input').value='';
 };
-document.getElementById('prev').onclick=()=>{st.month--;if(st.month<0){st.month=11;st.year--;}render();};
-document.getElementById('next').onclick=()=>{st.month++;if(st.month>11){st.month=0;st.year++;}render();};
+document.getElementById('prev').onclick=()=>{st.month--;if(st.month<0){st.month=11;st.year--;}saveView();render();};
+document.getElementById('next').onclick=()=>{st.month++;if(st.month>11){st.month=0;st.year++;}saveView();render();};
 
 // st.events에 들어있는 모든 공대일(e:YYYY-M-D) 키를 파싱해
 // 오늘 이후(미래) 날짜만, 가까운 순서대로 정렬해 반환합니다.
@@ -1305,7 +1310,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v3.51 · 2026-08-20';
+const APP_VERSION = 'v3.52 · 2026-08-20';
 
 // ── 웹 푸시 구독 ──────────────────────────────────────────────
 const PUSH_WORKER_URL = 'https://aging-curve-push.anna981201.workers.dev';
@@ -1406,6 +1411,11 @@ function urlBase64ToUint8Array(base64String){
     indicator.style.top = '16px';
     spinner.style.display = 'block';
     ptrText.textContent = '새로고침 중...';
+
+    // 새로고침 시 오늘 달로 복귀
+    st.year = new Date().getFullYear();
+    st.month = new Date().getMonth();
+    saveView();
 
     if(apiUrl) await sheetGet();
     else render();
