@@ -208,7 +208,7 @@
   <span id="ptr-text">↓ 당겨서 새로고침</span>
 </div>
 <div class="app">
-  <h1><img src="https://raw.githubusercontent.com/MiruTree777/team-calendar/main/kefka.png" style="width:32px;height:32px;object-fit:contain;image-rendering:pixelated;vertical-align:middle;margin-right:4px" alt="케프카"> 에이징커브 공대</h1>
+  <h1><img src="https://raw.githubusercontent.com/MiruTree777/team-calendar/main/kefka.png" style="width:32px;height:32px;object-fit:contain;image-rendering:pixelated;vertical-align:middle;margin-right:4px;flex-shrink:0" alt="" loading="eager" decoding="async" onerror="this.style.display='none'"> 에이징커브 공대</h1>
 
   <!-- 로그인 화면 -->
   <div id="login-screen">
@@ -390,8 +390,13 @@
 <script>
 // 브라우저가 뒤로가기/캐시(bfcache)에서 이 페이지를 그대로 복원할 경우,
 // 자동으로 한 번 강제 새로고침해서 항상 최신 버전을 보도록 합니다.
+// 새로고침(F5, 당겨서 새로고침) 시 오늘 달로 복귀
+if(performance.navigation.type === 1 || performance.getEntriesByType('navigation')[0]?.type === 'reload'){
+  localStorage.removeItem('last_view');
+}
 window.addEventListener('pageshow', function(event){
   if(event.persisted){
+    localStorage.removeItem('last_view');
     window.location.reload();
   }
 });
@@ -1310,7 +1315,7 @@ renderHint();
 
 // 코드를 수정해서 새로 배포할 때마다 이 값을 올려주세요.
 // 화면 우측 상단에 표시되어, 팀원들이 최신 버전을 받았는지 한눈에 확인할 수 있습니다.
-const APP_VERSION = 'v3.52 · 2026-08-20';
+const APP_VERSION = 'v3.53 · 2026-09-28';
 
 // ── 웹 푸시 구독 ──────────────────────────────────────────────
 const PUSH_WORKER_URL = 'https://aging-curve-push.anna981201.workers.dev';
